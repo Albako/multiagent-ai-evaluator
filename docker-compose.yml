@@ -1,0 +1,62 @@
+version: '3.8'
+
+x-gpu-defaults: &gpu-defaults
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  # API GATEWAY (FastAPI)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
+    container_name: multiagent_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    profiles: ["pc2"]
+
+    # PC1: Workers
+    manager_pc1:
+      build:
+        context: ./backend
+        dockerfile: Dockerfile.manager
+      container_name: model_manager_pc1
+      <<: &gpu-defaults
+      ports:
+        - "8001:8001"
+      volumes:
+        - ./models:/models
+      env_file:
+        - .env
+      environment:
+        - MANAGER_PORT=8001
+        - NODE_ROLE=workers
+      restart: unless-stopped
+      profiles: ["pc1"]
+
+    # PC2: Judge
+    manager_pc2:
+      build:
+        context: ./backend
+        dockerfile: Dockerfile.manager
+      container_name: model_manager_pc2
+      <<: *gpu-defaults
+      ports:
+        - "8003:8003"
+      volumes:
+        - ./models:/models
+      env_file:
+        - .env
+      environment:
+        - MANAGER_PORT=8003
+        - NODE_ROLE=judge
+      restart: unless-stopped
+      profiles: ["pc2"]
