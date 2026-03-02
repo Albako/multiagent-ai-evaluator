@@ -6,7 +6,7 @@ Czat AI oparty na architekturze wieloagentowej
 ## Back-end:
 System wykorzystuje dwa mniejsze modele (worker) do generowania zróżnicowanych odpowiedzi oraz większy model (judge) do ich krytycznej oceny, weryfikacji i łączenia w ostateczny wynik. Całość będzie działała w klastrze AI stworzonym z dwóch PC. Dostęp do serwera backendowego będzie dostępny dla członków zespołu po VPN Tailscale z włączonym mechanizmem split DNS
 
-# Klaster AI będzie sie składał z:
+### Klaster AI będzie sie składał z:
 - PC1 - 4070ti 12GB VRAM + 64GB RAM 6400 - na tym systemie będą pracowały wstępnie dwa modele workerów.
 - PC2 - 4060 8GB VRAM + 64GB RAM 5200 - na tym systemie będzie pracował model sędzi.
 - Współpraca - LAN 2.5Gbps + API + VPN
@@ -17,7 +17,7 @@ Silnik na którym będą pracowały modele to `llama.cpp (llama-cpp-python)`
 
 Format modeli llm to `.gguf`
 
-# Mechanizmy logiczne i tryby działania
+### Mechanizmy logiczne i tryby działania
 
 System będzie posiadał trzy tryby:
 - Fast - Użycie jednego modelu bez architektury multi-agent.
