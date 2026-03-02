@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+# set python to not to write .pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# install basic system dependencies required for potential runtime operations
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only requirements first to leverage Docker layer caching
+COPY requirements.manager.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.manager.txt \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
+
+COPY manager.py .
+
+CMD ["sh", "-c", "uvicorn manager:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001}"]
