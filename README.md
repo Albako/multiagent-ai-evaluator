@@ -7,7 +7,7 @@ Ai-Chat bot with Judge-Worker architecture. The project consists of backend + AP
 3. And each having at least 1 Nvidia GPU with at least 8GB of VRAM
 
 ## Back-end
-Starting the Back-end requires using in the first PC:
+Starting the Back-end requires using this commend in the first PC:
 ```bash
 ./start.sh pc1
 ```
