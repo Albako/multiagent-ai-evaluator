@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from llama_cpp import Llama
 
-app = FastAPI(title"Dynamic Model Manager")
+app = FastAPI(title="Dynamic Model Manager")
 
 # Program manages which models to load into the memory
 # Key is worker_id (worker1 or judge)
@@ -66,7 +66,7 @@ async def generate_text(worker_id: str, request: GenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
-@app.post("/apu/v1/system/clear_all")
+@app.post("/api/v1/system/clear_all")
 async def clear_all_models():
     global active_models
 
