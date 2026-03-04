@@ -52,7 +52,7 @@ async def load_model(request: LoadModelRequest):
 @app.post("/api/v1/{worker_id}/generate")
 async def generate_text(worker_id: str, request: GenerateRequest):
     if worker_id not in active_models:
-        raise HTTPException(status_code=400, detailf"No active model loaded for worker ID: {worker_id}")
+        raise HTTPException(status_code=400, detail=f"No active model loaded for worker ID: {worker_id}")
 
     llm = active_models[worker_id]
 
