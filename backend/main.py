@@ -152,8 +152,8 @@ async def chat_endpoint(request: ChatRequest):
         while iteration < max_iterations and not approved:
             print(f"--- Starting Iteration {iteration + 1} ---")
             # pro/coding mode - both workers are loaded in the same time
-            worker1_task = query_manager(PC1_MANAGER_URL, "worker1", request.message)
-            worker2_task = query_manager(PC1_MANAGER_URL, "worker2", request.message)
+            worker1_task = query_manager(PC1_MANAGER_URL, "worker1", current_prompt)
+            worker2_task = query_manager(PC1_MANAGER_URL, "worker2", current_prompt)
             worker1_response, worker2_response = await asyncio.gather(worker1_task, worker2_task)
 
             # blind evaluation with order shuffling
