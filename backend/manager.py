@@ -45,7 +45,7 @@ async def load_model(request: LoadModelRequest):
             verbose=False
         )
         active_models[request.worker_id] = llm
-        return {"status": "success", "message": f"Succesfully loaded {request.model_name} for {request.worker_id}"}
+        return {"status": "success", "message": f"Successfully loaded {request.model_name} for {request.worker_id}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
