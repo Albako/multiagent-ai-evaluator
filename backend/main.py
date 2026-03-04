@@ -115,7 +115,7 @@ def apply_sliding_window(session_id: str, new_message: str, max_tokens: int = 40
 
 def update_history_with_response(session_id: str, response: str):
     global chat_histories
-        chat_histories[session_id] += f"{response}\n"
+    chat_histories[session_id] += f"{response}\n"
 
 async def query_manager(url: str, worker_id: str, prompt: str) -> str:
     async with httpx.AsyncClient(timeout=300.0) as client:
