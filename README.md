@@ -21,6 +21,8 @@ and in the second PC:
 ```
 In our case, the PC1 has more VRAM than the PC2, therefore PC1 is being used for the `Fast` mode, and as a Worker's host in the other modes.
 
+Make sure to edit the IP adresses in the `.env` file.
+
 # Testing
 You can test the connection between the PCs and if the models can be loaded by using this commans:
 ```bash
