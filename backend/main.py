@@ -20,7 +20,7 @@ class InitModeRequest(BaseModel):
     mode: str
 
 async def load_model_on_manager(url: str, worker_id: str, model_name: str, n_gpu_layers: int = -1):
-    async with httpx.AsynClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             print(f"Requesting to load {model_name} on {worker_id} at {url}...")
             response = await client.post(
@@ -118,7 +118,7 @@ def update_history_with_response(session_id: str, response: str):
         chat_histories[session_id] += f"{response}\n"
 
 async def query_manager(url: str, worker_id: str, prompt: str) -> str:
-    async with httpx.AsynClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             response = await client.post(
                 f"{url}/api/v1/{worker_id}/generate",
@@ -126,7 +126,7 @@ async def query_manager(url: str, worker_id: str, prompt: str) -> str:
             )
             response.raise_for_status()
             data = response.json()
-            return data["reponse"]["choices"][0]["text"].strip()
+            return data["response"]["choices"][0]["text"].strip()
         except httpx.RequestError as e:
             print(f"HTTP Request failes: {e}")
             return f"Error communicating with {worker_id}"
@@ -154,10 +154,10 @@ async def chat_endpoint(request: ChatRequest):
             # pro/coding mode - both workers are loaded in the same time
             worker1_task = query_manager(PC1_MANAGER_URL, "worker1", request.message)
             worker2_task = query_manager(PC1_MANAGER_URL, "worker2", request.message)
-            worker1_reponse, worker2_response = await asyncio.gather(worker1_task, worker2_task)
+            worker1_response, worker2_response = await asyncio.gather(worker1_task, worker2_task)
 
             # blind evaluation with order shuffling
-            responses = [worker1_reponse, worker2_response]
+            responses = [worker1_response, worker2_response]
             random.shuffle(responses)
 
             judge_prompt = (
@@ -203,7 +203,7 @@ async def chat_endpoint(request: ChatRequest):
         # if iterations == 3 and still answers are awful, then force a final resolution
         if not approved:
             print("Max iterations reached. Forcing final synthesis.")
-            force_prompt = f"Synthesize the best possible answer from these two flawed attempts based on the user request: '{request.message}'.\nA: {worker1_reponse}\nB: {worker2_response}\nOutput ONLY the final answer."
+            force_prompt = f"Synthesize the best possible answer from these two flawed attempts based on the user request: '{request.message}'.\nA: {worker1_response}\nB: {worker2_response}\nOutput ONLY the final answer."
             final_answer = await query_manager(PC2_MANAGER_URL, "judge", force_prompt)
 
         update_history_with_response(request.session_id, final_answer)
@@ -212,7 +212,7 @@ async def chat_endpoint(request: ChatRequest):
             "final_response": final_answer,
             "iterations": iteration + 1 if not approved else iteration,
             "debug": {
-                "worker1_last": worker1_reponse,
+                "worker1_last": worker1_response,
                 "worker2_last": worker2_response,
                 "judge_raw": judge_response
             }
