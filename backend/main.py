@@ -114,7 +114,7 @@ def apply_sliding_window(session_id: str, new_message: str, max_tokens: int = 40
     return history
 
 def update_history_with_response(session_id: str, response: str):
-    global chat_histories:
+    global chat_histories
         chat_histories[session_id] += f"{response}\n"
 
 async def query_manager(url: str, worker_id: str, prompt: str) -> str:
@@ -128,7 +128,7 @@ async def query_manager(url: str, worker_id: str, prompt: str) -> str:
             data = response.json()
             return data["response"]["choices"][0]["text"].strip()
         except httpx.RequestError as e:
-            print(f"HTTP Request failes: {e}")
+            print(f"HTTP Request failed: {e}")
             return f"Error communicating with {worker_id}"
 
 @app.post("/chat")
@@ -161,7 +161,7 @@ async def chat_endpoint(request: ChatRequest):
             random.shuffle(responses)
 
             judge_prompt = (
-                "You are a strict judge. Truth is the most importath thing for you. You don't like responses that seem true, but aren't.\n\n"
+                "You are a strict judge. Truth is the most important thing for you. You don't like responses that seem true, but aren't.\n\n"
                 f"The user asked: '{request.message}'.\n\n"
                 f"Response A: {responses[0]}\n\n"
                 f"Response B: {responses[1]}\n\n"
@@ -191,7 +191,7 @@ async def chat_endpoint(request: ChatRequest):
                     critique = re.sub(r'(?i)STATUS:\s*REJECTED', '', judge_response).strip()
 
                 # update the prompt for the next iteration
-                current_prompt = f"Original request: {request.message}\n\nJudge's critique on your previous attempt: {critique}\n\nPlease provide an impoved response fixing these issues."
+                current_prompt = f"Original request: {request.message}\n\nJudge's critique on your previous attempt: {critique}\n\nPlease provide an improved response fixing these issues."
                 iteration += 1
 
             else:
