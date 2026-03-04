@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # set python to not to write .pyc files
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -18,7 +18,7 @@ COPY requirements.manager.txt .
 # Install dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.manager.txt \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu131
 
 COPY manager.py .
 
