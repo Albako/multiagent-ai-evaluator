@@ -26,6 +26,6 @@ System będzie posiadał trzy tryby:
 
 Mechanizmy kognitywne - ślepa ocena ze zmianą kolejności: sędzia ocenia wygenerowane odpowiedzi bez wiedzy, która odpowiedz pochodzi od którego modelu. W przypadku wybrania pierwszej odpowiedzi zamiast drugiej z powodu, ze po prostu byla pierwsza, system zmienia kolejność i pyta ponownie.
 
-Pętla refleksji - Sędzia nie tylko wybiera kod, ale może wygenerować konstruktywną krytykę i odesłać kod do Workera w celu poprawy (maksymalnie 2 iteracje, aby zapobiec nieskończonym pętlom – tzw. "Infinite Loops", na które skarżą się deweloperzy systemów wieloagentowych).
+Pętla refleksji - Sędzia nie tylko wybiera kod, ale może wygenerować konstruktywną krytykę i odesłać kod do Workera w celu poprawy (maksymalnie 3 iteracje, aby zapobiec nieskończonym pętlom – tzw. "Infinite Loops", na które skarżą się deweloperzy systemów wieloagentowych).
 
 Sliding Window (Przesuwane Okno Kontekstowe) - Streszczanie lub ucinanie najstarszych wiadomości w długich konwersacjach, co chroni przed przekroczeniem limitów tokenów modelu i spadkiem wydajności.
