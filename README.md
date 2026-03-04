@@ -10,7 +10,7 @@ Ai-Chat bot with Judge-Worker architecture. The project consists of backend + AP
 6. Both PCs needs to have Docker
 
 ## Back-end
-# Starting the cluster
+### Starting the cluster
 Starting the AI-Cluster requires using this command in the first PC:
 ```bash
 ./start.sh pc1
@@ -23,7 +23,7 @@ In our case, the PC1 has more VRAM than the PC2, therefore PC1 is being used for
 
 Make sure to edit the IP adresses in the `.env` file.
 
-# Testing
+### Testing
 You can test the connection between the PCs and if the models can be loaded by using this commans:
 ```bash
 curl -X POST http://<PC2_IP>:8000/system/init_mode -H "Content-Type: application/json" -d '{"mode": "pro"}'
