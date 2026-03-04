@@ -1,4 +1,4 @@
-fastapi==0.109.2
-uvicorn==0.27.1
-pydantic==2.6.1
-llama-cpp-python==0.2.56
+fastapi==0.127
+uvicorn==0.29
+pydantic==2.12.5
+llama-cpp-python==0.3.16
