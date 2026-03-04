@@ -4,7 +4,7 @@ Ai-Chat bot with Judge-Worker architecture. The project consists of backend + AP
 ## Requirements
 1. Two PCs preferably with Linux or WSL2
 2. Both PCs have to be connected either to the same network or to the same VPN
-3. Each having at least 32GB of RAM
+3. Each having at least 32GB of RAM (less should also work, but it's not recommended)
 4. And each having at least 1 Nvidia GPU with at least 8GB of VRAM (6GB should also work but then you'll have to choose different LLMs - smaller)
 
 ## Back-end
