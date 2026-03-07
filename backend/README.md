@@ -29,3 +29,7 @@ Mechanizmy kognitywne - ślepa ocena ze zmianą kolejności: sędzia ocenia wyge
 Pętla refleksji - Sędzia nie tylko wybiera kod, ale może wygenerować konstruktywną krytykę i odesłać kod do Workera w celu poprawy (maksymalnie 3 iteracje, aby zapobiec nieskończonym pętlom – tzw. "Infinite Loops", na które skarżą się deweloperzy systemów wieloagentowych).
 
 Sliding Window (Przesuwane Okno Kontekstowe) - Streszczanie lub ucinanie najstarszych wiadomości w długich konwersacjach, co chroni przed przekroczeniem limitów tokenów modelu i spadkiem wydajności.
+
+### Halucynacje
+
+Halucynacje powiązane są pośrednio ze "zgodnością" modelu. Im bardziej model stara się zgadzać - czy też "sprawiać przyjemność" użytkownikowi - tym halucynacje mogą pojawiać się częściej. "Zmniejszanie" potrzeby zgadzania się z użytkownikiem, powoduje zmniejszenie występowania halucynacji. Jednakże przez fakt, w jaki sposób modele są uczone tworzyć zdania, halucynacje są pośrednio powiązane z umiejętnością tworzenia logicznych zdań.
