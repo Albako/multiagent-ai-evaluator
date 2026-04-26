@@ -19,7 +19,10 @@ and in the second PC:
 ```bash
 ./start.sh pc2
 ```
-In our case, the PC1 has more VRAM than the PC2, therefore PC1 is being used for the `Fast` mode, and as a Worker's host in the other modes.
+and finally the third:
+```bash
+./start.sh pc3
+```
 
 Make sure to edit the IP adresses in the `.env` file.
 
