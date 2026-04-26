@@ -8,7 +8,6 @@ x-gpu-defaults: &gpu-defaults
             capabilities: [gpu]
 
 services:
-  # API GATEWAY (FastAPI)
   api:
     build:
       context: ./backend
@@ -19,10 +18,9 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    profiles: ["pc2"]
+    profiles: ["pc3"]
 
-  # PC1: Workers
-  manager_pc1:
+  manager_worker1:
     build:
       context: ./backend
       dockerfile: Dockerfile.manager
@@ -36,16 +34,33 @@ services:
       - .env
     environment:
       - MANAGER_PORT=8001
-      - NODE_ROLE=workers
+      - NODE_ROLE=worker1
     restart: unless-stopped
     profiles: ["pc1"]
 
-  # PC2: Judge
-  manager_pc2:
+  manager_worker2:
     build:
       context: ./backend
       dockerfile: Dockerfile.manager
     container_name: model_manager_pc2
+    <<: *gpu-defaults
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./models:/models:z
+    env_file:
+      - .env
+    environment:
+      - MANAGER_PORT=8002
+      - NODE_ROLE=worker2
+    restart: unless-stopped
+    profiles: ["pc2"]
+
+  manager_judge:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.manager
+    container_name: model_manager_pc3
     <<: *gpu-defaults
     ports:
       - "8003:8003"
@@ -57,4 +72,4 @@ services:
       - MANAGER_PORT=8003
       - NODE_ROLE=judge
     restart: unless-stopped
-    profiles: ["pc2"]
+    profiles: ["pc3"]
