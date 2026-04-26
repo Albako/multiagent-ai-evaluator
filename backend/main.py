@@ -3,6 +3,7 @@ import random
 import asyncio
 import httpx
 import re
+import json
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -14,7 +15,8 @@ app = FastAPI(title="MultiAgent Chat API Gateway")
 chat_histories = {}
 
 PC1_MANAGER_URL = os.getenv("PC1_MANAGER_URL", "http://localhost:8001")
-PC2_MANAGER_URL = os.getenv("PC2_MANAGER_URL", "http://localhost:8003")
+PC2_MANAGER_URL = os.getenv("PC2_MANAGER_URL", "http://localhost:8002")
+PC3_MANAGER_URL = os.getenv("PC3_MANAGER_URL", "http://localhost:8003")
 
 class InitModeRequest(BaseModel):
     mode: str
@@ -43,43 +45,27 @@ async def initialize_mode(request: InitModeRequest):
 
     if mode == "fast":
         fast_model = os.getenv("FAST_MODEL")
-
         if not fast_model:
-            raise HTTPException(status_code=500, detail="Missing FAST_MODEL in .env file")
-
-        # fast mode only works on pc1 with worker1
+            raise HTTPException(status_code=500, detail="Missing FAST_MODEL in .env")
         await load_model_on_manager(PC1_MANAGER_URL, "worker1", fast_model)
-        return {"status": "success", "message": "Fast mode model loaded into VRAM"}
+        return {"status": "success", "message": "Fast mode loaded on PC1"}
 
-    elif mode == "pro":
-        worker1_model = os.getenv("PRO_WORKER_1_MODEL")
-        worker2_model = os.getenv("PRO_WORKER_2_MODEL")
-        judge_model = os.getenv("PRO_JUDGE_MODEL")
-
-        if not all([worker1_model, worker2_model, judge_model]):
-            raise HTTPException(status_code=500, detail="Missing model configuration in .env file for Pro mode")
-
-        await load_model_on_manager(PC1_MANAGER_URL, "worker1", worker1_model)
-        await load_model_on_manager(PC1_MANAGER_URL, "worker2", worker2_model)
-        await load_model_on_manager(PC2_MANAGER_URL, "judge", judge_model)
-        return {"status": "success", "message": "Pro mode model loaded into VRAM."}
-
-    elif mode == "coding":
-        worker1_model = os.getenv("CODING_WORKER_1_MODEL")
-        worker2_model = os.getenv("CODING_WORKER_2_MODEL")
-        judge_model = os.getenv("CODING_JUDGE_MODEL")
+    elif mode in ["pro", "coding"]:
+        prefix = "PRO" if mode == "pro" else "CODING"
+        worker1_model = os.getenv(f"{prefix}_WORKER_1_MODEL")
+        worker2_model = os.getenv(f"{prefix}_WORKER_2_MODEL")
+        judge_model = os.getenv(f"{prefix}_JUDGE_MODEL")
 
         if not all([worker1_model, worker2_model, judge_model]):
-            raise HTTPException(status_code=500, detail="Missing model configuration in .env file for Coding mode")
+            raise HTTPException(status_code=500, detail=f"Missing models for {mode} mode")
 
         await load_model_on_manager(PC1_MANAGER_URL, "worker1", worker1_model)
-        await load_model_on_manager(PC1_MANAGER_URL, "worker2", worker2_model)
-        await load_model_on_manager(PC2_MANAGER_URL, "judge", judge_model)
-        return {"status": "success", "message": "Coding mode model loaded into VRAM."}
+        await load_model_on_manager(PC2_MANAGER_URL, "worker2", worker2_model)
+        await load_model_on_manager(PC3_MANAGER_URL, "judge", judge_model)
+        return {"status": "success", "message": f"{mode.capitalize()} mode distributed across 3 nodes."}
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown mode: {mode}")
-
 
 class ChatRequest(BaseModel):
     session_id: str = "default"
@@ -117,12 +103,12 @@ def update_history_with_response(session_id: str, response: str):
     global chat_histories
     chat_histories[session_id] += f"{response}\n"
 
-async def query_manager(url: str, worker_id: str, prompt: str) -> str:
+async def query_manager(url: str, worker_id: str, prompt: str, max_tokens: int = 2048, temperature: float = 0.7) -> str:
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             response = await client.post(
                 f"{url}/api/v1/{worker_id}/generate",
-                json={"prompt": prompt, "max_tokens": 2048, "temperature": 0.7}
+                json={"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature}
             )
             response.raise_for_status()
             data = response.json()
@@ -141,7 +127,7 @@ async def chat_endpoint(request: ChatRequest):
         response = await query_manager(PC1_MANAGER_URL, "worker1", request.message)
         return {"final_response": response, "iterations": 0}
 
-    elif request.mode in ["pro", "coding"]:
+    elif request.mode in ["pro"]:
         max_iterations = 3
         iteration = 0
         approved = False
@@ -160,13 +146,122 @@ async def chat_endpoint(request: ChatRequest):
             responses = [worker1_response, worker2_response]
             random.shuffle(responses)
 
-            judge_prompt = (
-                "You are a strict judge. Truth is the most important thing for you. You don't like responses that seem true, but aren't.\n\n"
-                f"The user asked: '{request.message}'.\n\n"
-                f"Response A: {responses[0]}\n\n"
-                f"Response B: {responses[1]}\n\n"
-                "Evaluate both responses critically. If at least one is correct, or if you can synthesize a perfect final answer from them, you MUST start your response exactly with 'STATUS: APPROVED', followed by 'FINAL_ANSWER: ' and then write the final correct response. If BOTH are flawed, incomplete, or incorrect, you MUST start your response exactly with 'STATUS: REJECTED', followed by 'CRITIQUE: ' and explain what is wrong and how the workers should fix it."
-            )
+            judge_pro_prompt = f"""You are an objective evaluator focusing on factual accuracy, reasoning, and style.
+            Evaluate two responses to the user request: '{request.message}'.
+
+            Response A: {responses[0]}
+            Response B: {responses[1]}
+
+            Guidelines:
+            - Do not combine directly contradictory facts. Choose the one that is factually correct.
+            - Evaluate in a binary way: Is the response helpful and accurate (Yes/No)?
+            - If both are highly inaccurate, reject them.
+
+            Examples of good synthesis:
+            User: Explain black holes and their temperature.
+            A: Black holes emit Hawking radiation.
+            B: Black holes are extremely cold, but accretion disks are hot.
+            Synthesis: Choose both facts, as they do not contradict and provide a full picture.
+
+            Examples of bad synthesis:
+            User: Who won the 2002 World Cup?
+            A: Brazil won in 2002.
+            B: Germany won in 2002.
+            Synthesis: DO NOT combine. Brazil is correct. Germany is wrong.
+
+            Provide your final response containing:
+            1. THE FINAL ANSWER (clearly separated).
+            2. A REPORT section containing:
+            - Which model did better in merit vs style.
+            - Any conflicting facts detected and which was chosen and why.
+            - Justification for your synthesis approach.
+
+            Start your response with 'STATUS: APPROVED' or 'STATUS: REJECTED'.
+            """
+
+            judge_response = await query_manager(PC3_MANAGER_URL, "judge", judge_pro_prompt, temperature=0.7)
+
+            # asking the judge
+            judge_response = await query_manager(PC2_MANAGER_URL, "judge", judge_prompt)
+            judge_response_upper = judge_response.upper()
+
+            if "STATUS: APPROVED" in judge_response_upper:
+                approved = True
+                # extracting the final answer
+                if "FINAL_ANSWER:" in judge_response_upper:
+                    # find original casing index
+                    idx = judge_response_upper.find("FINAL_ANSWER:") + len("FINAL_ANSWER:")
+                    critique = judge_response[idx:].strip()
+                else:
+                    # fallback if judge has dementia and forgets the exact tag
+                    final_answer = re.sub(r'(?i)STATUS:\s*APPROVED', '', judge_response).strip()
+
+            elif "STATUS: REJECTED" in judge_response_upper:
+                if "CRITIQUE:" in judge_response_upper:
+                    idx = judge_response_upper.find("CRITIQUE:") + len("CRITIQUE:")
+                    critique = judge_response[idx:].strip()
+                else:
+                    critique = re.sub(r'(?i)STATUS:\s*REJECTED', '', judge_response).strip()
+
+                # update the prompt for the next iteration
+                current_prompt = f"Original request: {request.message}\n\nJudge's critique on your previous attempt: {critique}\n\nPlease provide an improved response fixing these issues."
+                iteration += 1
+
+            else:
+                # fallback if judge is hallucinating
+                print(f"Judge failed to use strict formatting. Forcing approval to avoid crash.")
+                approved = True
+                final_answer = judge_response
+
+    elif request.mode in ["coding"]:
+        max_iterations = 3
+        iteration = 0
+        approved = False
+
+        current_prompt = context_prompt
+        final_answer = ""
+        worker1_system_prompt = "You are an expert software engineer focusing strictly on runtime performance, algorithmic efficiency, and execution speed. Write the best possible high-performance code for the following request: "
+        worker2_system_prompt = "You are an expert software security engineer. You focus entirely on code security, robust error handling, preventing vulnerabilities, and edge-case safety. Write the most secure code for the following request: "
+
+        while iteration < max_iterations and not approved:
+            print(f"--- Starting Iteration {iteration + 1} ---")
+            # pro/coding mode - both workers are loaded in the same time
+            worker1_task = query_manager(PC1_MANAGER_URL, "worker1", f"{worker1_system_prompt}\n{request.message}")
+            worker2_task = query_manager(PC2_MANAGER_URL, "worker2", f"{worker2_system_prompt}\n{request.message}")
+            worker1_response, worker2_response = await asyncio.gather(worker1_task, worker2_task)
+
+            # blind evaluation with order shuffling
+            responses = [worker1_response, worker2_response]
+            random.shuffle(responses)
+
+
+            judge_coder_prompt = f"""You are a strict, methodical code judge. You must evaluate two code snippets.
+            Response A: {responses[0]}
+            Response B: {responses[1]}
+
+            Follow these steps exactly (Chain of Thought):
+            1. Analyze the computational complexity and performance of both codes.
+            2. Analyze the security, error handling, and bounds checking of both codes.
+            3. Check for syntax errors, proper indentation, and missing imports.
+            4. If both codes are fundamentally broken and do not compile, declare a tie ("REJECTED_BOTH"). Do not force a choice.
+            5. If at least one is viable, select one as the foundation. Synthesize a final code by rewriting the foundation from scratch, injecting the missing optimizations or security features from the other code.
+
+            You MUST respond ONLY in the following JSON format. No markdown blocks, no extra text:
+            {{
+                "status": "APPROVED" or "REJECTED_BOTH" or "REJECTED",
+                "critique": "Explanation if rejected, or empty if approved.",
+                "report": {{
+                    "foundation_chosen": "Response A, Response B, or Tie",
+                    "performance_security_improvements": "Details on what was merged...",
+                    "syntax_and_import_check": "Confirmation of syntax and imports..."
+                }},
+                "reasoning": "Your step-by-step chain of thought analysis...",
+                "final_code": "The synthesized, fully working code."
+            }}
+            """
+
+            # Fetching from Judge with low temperature
+            judge_response = await query_manager(PC3_MANAGER_URL, "judge", judge_coder_prompt, temperature=0.0)
 
             # asking the judge
             judge_response = await query_manager(PC2_MANAGER_URL, "judge", judge_prompt)
