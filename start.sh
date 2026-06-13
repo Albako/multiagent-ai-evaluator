@@ -23,7 +23,7 @@ PROFILE=$1
 if [ -z "$PROFILE" ]; then
     echo "Error: Missing profile argument."
     echo "Usage: ./start.sh <profile_name>"
-    echo "Example: ./start.sh orchestrator"
+    echo "Example: ./start.sh pc0"
     exit 1
 fi
 
