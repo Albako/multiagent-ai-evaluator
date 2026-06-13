@@ -18,7 +18,7 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    profiles: ["pc3"]
+    profiles: ["pc0"]
 
   manager_worker1:
     build:
