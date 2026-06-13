@@ -2,16 +2,20 @@
 Ai-Chat bot with Judge-Worker architecture. The project consists of backend + API, PWA app and mobile app.
 
 ## Requirements
-1. Two PCs preferably with Linux or WSL2
-2. Both PCs have to be connected either to the same network or to the same VPN
-3. Each having at least 32GB of RAM (less should also work, but it's not recommended)
-4. And each having at least one Nvidia GPU with at least 8GB of VRAM (6GB should also work but then you'll have to choose different LLMs - smaller)
-5. Both PCs needs to have the CUDA drivers installed
-6. Both PCs needs to have Docker
+1. Four PCs preferably with Linux or WSL2
+2. Each PCs have to be connected either to the same network or to the same VPN
+3. Three out of four having at least 32GB of RAM (less should also work, but it's not recommended) (exemptions are devices with unified memory +16GB)
+4. And each having at least one Nvidia GPU
+5. Three out of four PCs needs to have the CUDA drivers installed
+6. Three out of four PCs needs to have Docker
 
 ## Back-end
 ### Starting the cluster
-Starting the AI-Cluster requires using this command in the first PC:
+In order to start the cluster use this command in the weakest PC (the one without GPU):
+```bash
+./start.sh pc0
+```
+in the first PC:
 ```bash
 ./start.sh pc1
 ```
