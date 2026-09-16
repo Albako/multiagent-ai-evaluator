@@ -23,6 +23,18 @@ class GenerateRequest(BaseModel):
     max_tokens: int = 2048
     temperature: float = 0.7
 
+class TaskContext:
+    def __init__(self):
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+
+    def add_token_usage(self, api_response: dict):
+        self.total_prompt_tokens += api_response.get("prompt_tokens", 0)
+        self.total_completion_tokens += api_response.get("completion_tokens", 0)
+
+    def get_total_cost(self):
+        return self.total_prompt_tokens + self.total_completion_tokens
+
 @app.post("/api/v1/system/load_model")
 async def load_model(request: LoadModelRequest):
     global active_models
