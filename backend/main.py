@@ -155,7 +155,7 @@ def update_history_with_response(session_id: str, response: str):
 
 # Modified to return a dictionary with text, tokens, and errors
 async def query_manager(url: str, worker_id: str, prompt: str, max_tokens: int = 2048, temperature: float = 0.7) -> dict:
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         try:
             response = await client.post(
                 f"{url}/api/v1/{worker_id}/generate",
