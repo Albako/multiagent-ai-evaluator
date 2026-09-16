@@ -179,6 +179,14 @@ async def query_manager(url: str, worker_id: str, prompt: str, max_tokens: int =
                 "completion_tokens": 0,
                 "error": str(e)
             }
+        except json.JSONDecodeError as e:
+            print(f"JSON Decode failed from {worker_id}: {e}")
+            return {
+                "text": f"Format error from {worker_id}",
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "error": "Invalid JSON response"
+            }
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
