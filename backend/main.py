@@ -12,6 +12,10 @@ load_dotenv()
 
 app = FastAPI(title="MultiAgent Chat API Gateway")
 
+current_llm = None
+current_model_name = ""
+MODELS_DIR = os.getenv("MODELS_DIR", "/app/models")
+
 chat_histories = {}
 
 PC1_MANAGER_URL = os.getenv("PC1_MANAGER_URL", "http://localhost:8001")
@@ -20,10 +24,17 @@ PC3_MANAGER_URL = os.getenv("PC3_MANAGER_URL", "http://localhost:8003")
 
 API_TIMEOUT = 800.0
 
+class GenerationRequest(BaseModel):
+    prompt: str
+    model_name: str
+    max_tokens: int = 4096
+    temperature: float = 0.2
+
 class GenerationResponse(BaseModel):
     generated_text: str
     prompt_tokens: int
     completion_tokens: int
+    total_tokens: int
 
 class InitModeRequest(BaseModel):
     mode: str
