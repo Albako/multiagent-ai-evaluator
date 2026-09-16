@@ -20,6 +20,11 @@ PC3_MANAGER_URL = os.getenv("PC3_MANAGER_URL", "http://localhost:8003")
 
 API_TIMEOUT = 800.0
 
+class GenerationResponse(BaseModel):
+    generated_text: str
+    prompt_tokens: int
+    completion_tokens: int
+
 class InitModeRequest(BaseModel):
     mode: str
 
