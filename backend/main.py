@@ -109,9 +109,9 @@ async def initialize_mode(request: InitModeRequest):
         if not all([worker1_model, worker2_model, judge_model]):
             raise HTTPException(status_code=500, detail=f"Missing models for {mode} mode")
 
-        await load_model_on_manager(PC1_MANAGER_URL, "worker1", worker1_model, n_gpu_layers=5)
+        await load_model_on_manager(PC1_MANAGER_URL, "worker1", worker1_model, n_gpu_layers=55)
         await load_model_on_manager(PC2_MANAGER_URL, "worker2", worker2_model, n_gpu_layers=-1)
-        await load_model_on_manager(PC3_MANAGER_URL, "judge", judge_model, n_gpu_layers=10)
+        await load_model_on_manager(PC3_MANAGER_URL, "judge", judge_model, n_gpu_layers=15)
         return {"status": "success", "message": f"{mode.capitalize()} mode distributed across 3 nodes."}
 
     else:
