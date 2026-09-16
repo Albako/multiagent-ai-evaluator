@@ -66,7 +66,19 @@ async def generate_text(worker_id: str, request: GenerateRequest):
             max_tokens=request.max_tokens,
             temperature=request.temperature
         )
-        return {"worker_id": worker_id, "response": response}
+        
+        # Native usage extraction for Pareto/Cost analysis
+        usage = response.get("usage", {})
+        p_tokens = usage.get("prompt_tokens", 0)
+        c_tokens = usage.get("completion_tokens", 0)
+
+        return {
+            "worker_id": worker_id, 
+            "generated_text": response["choices"][0]["text"].strip(),
+            "prompt_tokens": p_tokens,
+            "completion_tokens": c_tokens,
+            "total_tokens": p_tokens + c_tokens
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
