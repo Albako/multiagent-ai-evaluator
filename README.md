@@ -1,4 +1,4 @@
-# MultiAgent Chat-Bot
+# MultiAgent AI Evaluator
 
 ## Hardware
 My project is hosted on 4 different hosts:
