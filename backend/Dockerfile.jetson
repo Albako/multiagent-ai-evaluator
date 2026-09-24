@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM dustynv/l4t-text-generation:r35.2.1
 
 # set python to not to write .pyc files
 ENV PYTHONDONTWRITEBYTECODE=1
