@@ -9,16 +9,22 @@ WORKDIR /app
 # install basic system dependencies required for potential runtime operations
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
+    cmake \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# forcing compilation of the llama.cpp library for CUDA cores
+ENV CMAKE_ARGS="-DGGML_CUDA=on"
+ENV FORCE_CMAKE=1
 
 # Copy only requirements first to leverage Docker layer caching
 COPY requirements.manager.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.manager.txt \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+    pip install --no-cache-dir -r requirements.manager.txt 
 
 COPY manager.py .
 
