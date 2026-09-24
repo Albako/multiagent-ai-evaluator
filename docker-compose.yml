@@ -47,7 +47,7 @@ services:
   manager_worker2:
     build:
       context: ./backend
-      dockerfile: Dockerfile.manager
+      dockerfile: Dockerfile.jetson
     container_name: model_manager_pc2
     <<: *jetson-gpu-defaults
     ports:
