@@ -3,12 +3,14 @@
 ## Hardware
 My project is hosted on 4 different hosts:
 1. PC0 API: My x86 server.
-2. PC1 Worker1: R9 7945HX 64GB 5200MT/s + RTX 4060 (mobile) 8GB GDDR6
-3. PC2 Worker2: Nvidia Jetson AGX Xavier Developer Kit 16GB 4267MT/s with MAXN mode enabled
-4. PC3 Judge: i7-14700KF 64GB 6400MT/s + RTX 4070 Ti 12GB GDDR6x
+2. PC1 Worker1: Nvidia Jetson AGX Xavier Developer Kit 16GB 4267MT/s with MAXN mode enabled  
+3. PC2 Worker2: R9 7945HX 64GB 5200MT/s + RTX 4060 (mobile) 8GB GDDR6
+4. PC3 Judge: i7-14700KF 64GB 6400MT/s + RTX 4070 Ti 12GB GDDR6X
 
 ## Back-end
 ### Starting the cluster
+Make sure to edit the IP adresses in the `.env` file (`.env` will create itself from `.env.example` after running the `./start.sh pcx` script).
+
 In order to start the cluster use this command in the API host:
 ```bash
 ./start.sh pc0
@@ -25,8 +27,6 @@ and finally the third PCx86 (Judge):
 ```bash
 ./start.sh pc3
 ```
-
-Make sure to edit the IP adresses in the `.env` file.
 
 ### Testing
 Start by loading the models:
