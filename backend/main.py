@@ -171,6 +171,14 @@ async def query_manager(url: str, worker_id: str, prompt: str, max_tokens: int =
                 "completion_tokens": data.get("completion_tokens", 0),
                 "error": None
             }
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP Status Error from {worker_id}: {e.response.status_code} - {e.response.text}")
+            return {
+                "text": f"Error: Model not loaded or worker unavailable ({e.response.status_code})",
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "error": str(e)
+            }
         except httpx.RequestError as e:
             print(f"HTTP Request failed: {e}")
             return {
