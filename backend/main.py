@@ -85,9 +85,13 @@ async def load_model_on_manager(url: str, worker_id: str, model_name: str, n_gpu
             )
             response.raise_for_status()
             return response.json()
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.json().get("detail", e.response.text)
+            print(f"Worker {worker_id} at {url} returned {e.response.status_code}: {error_detail}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"Worker {worker_id} error: {error_detail}")
         except httpx.RequestError as e:
             print(f"Failed to load {model_name} on {worker_id} at {url}: {e}")
-            raise HTTPException(status_code=500, detail=f"Model loading failed: {str(e)}")
+            raise HTTPException(status_code=502, detail=f"Model loading failed: {str(e)}")
 
 @app.post("/system/init_mode")
 async def initialize_mode(request: InitModeRequest):
