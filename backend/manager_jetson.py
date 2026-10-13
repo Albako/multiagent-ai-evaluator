@@ -12,7 +12,7 @@ active_models = {}
 class LoadModelRequest(BaseModel):
     worker_id: str
     model_name: str
-    n_gpu_layers: int = -1 
+    n_gpu_layers: int = 24
     n_ctx: int = 4096
 
 class GenerateRequest(BaseModel):
