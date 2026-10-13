@@ -22,9 +22,10 @@ ENV FORCE_CMAKE=1
 # Copy only requirements first to leverage Docker layer caching
 COPY requirements.manager.txt .
 
-# Install dependencies
+# Install dependencies and force compilation of the newest llama-cpp-python from source
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.manager.txt 
+    pip install --no-cache-dir -r requirements.manager.txt && \
+    pip install --no-cache-dir --upgrade --force-reinstall --no-binary llama-cpp-python llama-cpp-python
 
 COPY manager.py .
 
