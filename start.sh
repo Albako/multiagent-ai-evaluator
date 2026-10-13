@@ -27,4 +27,4 @@ if [ -z "$PROFILE" ]; then
     exit 1
 fi
 
-docker compose --profile "$PROFILE" up -d
+docker compose --profile "$PROFILE" up -d "${@:2}"
