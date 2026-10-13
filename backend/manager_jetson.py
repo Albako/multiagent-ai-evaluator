@@ -39,7 +39,7 @@ async def load_model(request: LoadModelRequest):
             model_path=model_path,
             n_gpu_layers=request.n_gpu_layers,
             n_ctx=request.n_ctx,
-            use_mmap=True,
+            use_mmap=False,
             flash_attn=True,
             verbose=True
         )
