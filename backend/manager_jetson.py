@@ -13,7 +13,7 @@ class LoadModelRequest(BaseModel):
     worker_id: str
     model_name: str
     n_gpu_layers: int = -1 
-    n_ctx: int = 8192
+    n_ctx: int = 4096
 
 class GenerateRequest(BaseModel):
     prompt: str
