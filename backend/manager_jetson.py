@@ -34,10 +34,12 @@ async def load_model(request: LoadModelRequest):
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail=f"Page...I mean model not found at {model_path}")
     try:
-        print(f"Loading {request.model_name} for {request.worker_id} into VRAM (mmap disabled)...")
+        print(f"Loading {request.model_name} for {request.worker_id} into VRAM (mmap disabled, UMA split)...")
+        safe_gpu_layers = 24 if request.n_gpu_layers == -1 else request.n_gpu_layers
+        
         llm = Llama(
             model_path=model_path,
-            n_gpu_layers=request.n_gpu_layers,
+            n_gpu_layers=safe_gpu_layers,
             n_ctx=request.n_ctx,
             use_mmap=False,
             flash_attn=True,
