@@ -12,7 +12,7 @@ active_models = {}
 class LoadModelRequest(BaseModel):
     worker_id: str
     model_name: str
-    n_gpu_layers: int = 24
+    n_gpu_layers: int = -1
     n_ctx: int = 4096
 
 class GenerateRequest(BaseModel):
@@ -39,7 +39,8 @@ async def load_model(request: LoadModelRequest):
             model_path=model_path,
             n_gpu_layers=request.n_gpu_layers,
             n_ctx=request.n_ctx,
-            use_mmap=False, # Key value for devices with unified memory
+            use_mmap=True,
+            flash_attn=True,
             verbose=True
         )
         active_models[request.worker_id] = llm
