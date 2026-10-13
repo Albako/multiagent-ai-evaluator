@@ -62,10 +62,13 @@ async def generate_text(worker_id: str, request: GenerateRequest):
     llm = active_models[worker_id]
 
     try:
-        response = llm(
-            request.prompt,
+        response = llm.create_chat_completion(
+            messages=[
+                {"role": "user", "content": request.prompt}
+            ],
             max_tokens=request.max_tokens,
-            temperature=request.temperature
+            temperature=request.temperature,
+            repeat_penalty=1.15  # penalty for going into loops
         )
         
         # Native usage extraction for Pareto/Cost analysis
