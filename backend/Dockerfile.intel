@@ -1,0 +1,42 @@
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+# set python to not to write .pyc files
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# install basic system dependencies required for potential runtime operations
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    build-essential \
+    cmake \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    python3-venv \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
+# Copy only requirements first to leverage Docker layer caching
+COPY requirements.manager.txt .
+
+# Turning off AVX-512 instruction for Intel CPUs
+ENV CMAKE_ARGS="-DGGML_CUDA=on -DGGML_AVX512=off"
+ENV FORCE_CMAKE=1
+
+# Install dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.manager.txt && \
+    pip install --no-cache-dir --upgrade --force-reinstall --no-binary llama-cpp-python llama-cpp-python
+
+COPY manager.py .
+
+CMD ["sh", "-c", "uvicorn manager:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001}"]
