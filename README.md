@@ -45,5 +45,6 @@ curl -X POST "http://127.0.0.1:8000/chat" \
      -d '{
            "message": "Write a Python function to check if a number is prime and optimize its time complexity.",
            "mode": "coding"
-         }'
+         }' \
+     -w "\n"
 ```
