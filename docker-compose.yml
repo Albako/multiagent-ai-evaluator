@@ -29,7 +29,7 @@ services:
   manager_worker1:
     build:
       context: ./backend
-      dockerfile: Dockerfile.manager
+      dockerfile: Dockerfile.amd
     container_name: model_manager_pc1
     <<: *gpu-defaults
     ports:
@@ -67,7 +67,7 @@ services:
   manager_judge:
     build:
       context: ./backend
-      dockerfile: Dockerfile.manager
+      dockerfile: Dockerfile.intel
     container_name: model_manager_pc3
     <<: *gpu-defaults
     ports:
