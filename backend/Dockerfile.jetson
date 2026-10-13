@@ -27,6 +27,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.manager.txt && \
     pip install --no-cache-dir --upgrade --force-reinstall --no-binary llama-cpp-python llama-cpp-python
 
-COPY manager.py .
+COPY manager_jetson.py .
 
-CMD ["sh", "-c", "uvicorn manager:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001}"]
+CMD ["sh", "-c", "uvicorn manager_jetson:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001}"]
