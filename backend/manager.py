@@ -43,6 +43,7 @@ async def load_model(request: LoadModelRequest):
             model_path=model_path,
             n_gpu_layers=request.n_gpu_layers,
             n_ctx=request.n_ctx,
+            flash_attn=True,
             verbose=True
         )
         active_models[request.worker_id] = llm
