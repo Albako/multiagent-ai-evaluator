@@ -3,9 +3,9 @@
 ## Hardware
 My project is hosted on 4 different hosts:
 1. PC0 API: My x86 server.
-2. PC1 Worker1: R9 7945HX 64GB 5200MT/s + RTX 4060 (mobile) 8GB GDDR6
+2. PC1 Worker1: R9 7945HX (AVX 512 is supported) 64GB 5200MT/s + RTX 4060 (mobile) 8GB GDDR6
 3. PC2 Worker2: Nvidia Jetson AGX Xavier Developer Kit 16GB 4267MT/s with MAXN mode enabled
-4. PC3 Judge: i7-14700KF 64GB 6400MT/s + RTX 4070 Ti 12GB GDDR6X
+4. PC3 Judge: i7-14700KF (AVX 512 is not supported) 64GB 6400MT/s + RTX 4070 Ti 12GB GDDR6X
 
 ## Back-end
 ### Starting the cluster
