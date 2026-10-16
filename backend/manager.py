@@ -12,6 +12,9 @@ app = FastAPI(title="Dynamic Model Manager")
 # Value is instantiated Llama object
 active_models = {}
 
+# Getting number of CPU cores
+LLAMA_THREADS = int(os.getenv("LLAMA_THREADS", 8))
+
 class LoadModelRequest(BaseModel):
     worker_id: str
     model_name: str
@@ -43,6 +46,8 @@ async def load_model(request: LoadModelRequest):
             model_path=model_path,
             n_gpu_layers=request.n_gpu_layers,
             n_ctx=request.n_ctx,
+            n_threads=LLAMA_THREADS,
+            n_threads_batch=LLAMA_THREADS_BATCH,
             flash_attn=True,
             verbose=True
         )
@@ -78,7 +83,7 @@ async def generate_text(worker_id: str, request: GenerateRequest):
 
         return {
             "worker_id": worker_id, 
-            "generated_text": response["choices"][0]["text"].strip(),
+            "generated_text": response["choices"][0]["message"]["content"].strip(),
             "prompt_tokens": p_tokens,
             "completion_tokens": c_tokens,
             "total_tokens": p_tokens + c_tokens
