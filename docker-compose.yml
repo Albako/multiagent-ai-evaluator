@@ -74,6 +74,7 @@ services:
       - "8003:8003"
     volumes:
       - ./models:/models:z
+    cpuset: "0,2,4,6,8,10,12,14"
     env_file:
       - .env
     environment:
