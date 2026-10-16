@@ -41,6 +41,8 @@ services:
     environment:
       - MANAGER_PORT=8001
       - NODE_ROLE=worker1
+      - LLAMA_THREADS=16
+      - LLAMA_THREADS_BATCH=16
     restart: unless-stopped
     profiles: ["pc1"]
 
@@ -80,5 +82,7 @@ services:
     environment:
       - MANAGER_PORT=8003
       - NODE_ROLE=judge
+      - LLAMA_THREADS=8
+      - LLAMA_THREADS_BATCH=8
     restart: unless-stopped
     profiles: ["pc3"]
