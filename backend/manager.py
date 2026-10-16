@@ -14,6 +14,12 @@ active_models = {}
 
 # Getting number of CPU cores
 LLAMA_THREADS = int(os.getenv("LLAMA_THREADS", 8))
+LLAMA_THREADS_BATCH = int(os.getenv("LLAMA_THREADS_BATCH", 8))
+N_BATCH = int(os.getenv("N_BATCH", 512))
+USE_MMAP = os.getenv("USE_MMAP", "true").lower() == "true"
+FLASH_ATTN = os.getenv("FLASH_ATTN", "true").lower() == "true"
+OVERRIDE_GPU_LAYERS = int(os.getenv("OVERRIDE_GPU_LAYERS", 0))
+OVERRIDE_N_CTX = int(os.getenv("OVERRIDE_N_CTX", 0))
 
 class LoadModelRequest(BaseModel):
     worker_id: str
@@ -41,14 +47,21 @@ async def load_model(request: LoadModelRequest):
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail=f"Page...I mean model not found at {model_path}")
     try:
+        safe_gpu_layers = OVERRIDE_GPU_LAYERS if (request.n_gpu_layers == -1 and OVERRIDE_GPU_LAYERS > 0) else request.n_gpu_layers
+        final_n_ctx = OVERRIDE_N_CTX if OVERRIDE_N_CTX > 0 else request.n_ctx
+        
         print(f"Loading {request.model_name} for {request.worker_id} into VRAM...")
+        print(f"Hardware Config -> mmap:{USE_MMAP}, flash_attn:{FLASH_ATTN}, batch:{N_BATCH}, threads:{LLAMA_THREADS}")
+        
         llm = Llama(
             model_path=model_path,
-            n_gpu_layers=request.n_gpu_layers,
-            n_ctx=request.n_ctx,
+            n_gpu_layers=safe_gpu_layers,
+            n_ctx=final_n_ctx,
+            n_batch=N_BATCH,
             n_threads=LLAMA_THREADS,
             n_threads_batch=LLAMA_THREADS_BATCH,
-            flash_attn=True,
+            use_mmap=USE_MMAP,
+            flash_attn=FLASH_ATTN,
             verbose=True
         )
         active_models[request.worker_id] = llm
