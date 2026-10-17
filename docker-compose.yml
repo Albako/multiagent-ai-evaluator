@@ -36,13 +36,14 @@ services:
       - "8001:8001"
     volumes:
       - ./models:/models:z
+    cpuset: "0,2,4,6,8,10,12,14"
     env_file:
       - .env
     environment:
       - MANAGER_PORT=8001
       - NODE_ROLE=worker1
-      - LLAMA_THREADS=16
-      - LLAMA_THREADS_BATCH=16
+      - LLAMA_THREADS=8
+      - LLAMA_THREADS_BATCH=8
     restart: unless-stopped
     profiles: ["pc1"]
 
