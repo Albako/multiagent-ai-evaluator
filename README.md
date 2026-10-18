@@ -30,15 +30,34 @@ and finally the i7+4070Ti PCx86 (Judge):
 
 ## Testing
 ### Testing if an `.gguf` can be loaded on individual nodes:
+PC1:
+```bash
+docker exec -it model_manager_pc1 python3 -c "
+from llama_cpp import Llama
+print('--- Testing ---')
+llm = Llama(model_path='/models/gemma-4-12b-it-UD-Q4_K_XL.gguf', n_ctx=1024, verbose=True)
+print('--- Success ---')
+"
+```
 PC2:
 ```bash
 docker exec -it model_manager_pc2 python3 -c "
 from llama_cpp import Llama
 print('--- Testing ---')
-llm = Llama(model_path='/models/gemma-4-12b-it-UD-Q4_K_XL.gguf', n_gpu_layers=24, n_ctx=1024, use_mmap=False, verbose=True)
+llm = Llama(model_path='/models/gemma-4-E4B-it-Q6_K.gguf', n_gpu_layers=24, n_ctx=1024, use_mmap=False, verbose=True)
 print('--- Success ---')
 "
 ```
+PC3:
+```bash
+docker exec -it model_manager_pc3 python3 -c "
+from llama_cpp import Llama
+print('--- Testing ---')
+llm = Llama(model_path='/models/gemma-4-26B-A4B-it-UD-Q8_K_XL.gguf', n_ctx=1024, verbose=True)
+print('--- Success ---')
+"
+```
+## Starting the project
 Start by loading the models:
 ```bash
 curl -s -X POST "http://127.0.0.1:8000/system/init_mode" \
@@ -48,7 +67,7 @@ curl -s -X POST "http://127.0.0.1:8000/system/init_mode" \
          }' \
      -w "\n"
 ```
-Then test the connection:
+Then send a prompt:
 ```bash
 curl -X POST "http://127.0.0.1:8000/chat" \
      -H "Content-Type: application/json" \
