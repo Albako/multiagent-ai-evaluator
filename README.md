@@ -28,7 +28,17 @@ and finally the i7+4070Ti PCx86 (Judge):
 ./start.sh pc3
 ```
 
-### Testing
+## Testing
+### Testing if an `.gguf` can be loaded on individual nodes:
+PC2:
+```bash
+docker exec -it model_manager_pc2 python3 -c "
+from llama_cpp import Llama
+print('--- Testing ---')
+llm = Llama(model_path='/models/gemma-4-12b-it-UD-Q4_K_XL.gguf', n_gpu_layers=24, n_ctx=1024, use_mmap=False, verbose=True)
+print('--- Success ---')
+"
+```
 Start by loading the models:
 ```bash
 curl -s -X POST "http://127.0.0.1:8000/system/init_mode" \
