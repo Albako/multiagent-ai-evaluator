@@ -398,7 +398,7 @@ async def chat_endpoint(request: ChatRequest):
 
                 else:
                     # Sequential Pipeline (Iteration 0)
-                    w2_resp = await query_manager(PC2_MANAGER_URL, "worker1", prompt=context_prompt, system_prompt=worker2_sys, temperature=0.7)
+                    w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", prompt=context_prompt, system_prompt=worker2_sys, temperature=0.7)
                     task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
                     base_generation = w2_resp["text"]
 
@@ -448,7 +448,7 @@ async def chat_endpoint(request: ChatRequest):
                     {"iteration": iteration, "length": len(base_generation), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
                 )
 
-                # Worker 2 audits the newly corrected output from Worker 1
+                # Worker 1 audits the newly corrected output from Worker 2
                 critique_prompt = (
                     f"User Request: {request.message}\n\n"
                     f"Previous Judge Feedback: {remediation_feedback}\n\n"
@@ -574,8 +574,8 @@ async def chat_endpoint(request: ChatRequest):
             "token_cost": task_context.get_stats_dict(),
             "execution_trace": execution_trace.trace,
             "debug": {
-                "last_worker1_generation": base_generation,
-                "last_worker2_critique": critique
+                "last_worker2_generation": base_generation,
+                "last_worker1_critique": critique
             }
         }
 
