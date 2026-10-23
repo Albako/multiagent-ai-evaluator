@@ -49,7 +49,10 @@ async def load_model(request: LoadModelRequest):
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail=f"Page...I mean model not found at {model_path}")
     try:
-        safe_gpu_layers = OVERRIDE_GPU_LAYERS if (request.n_gpu_layers == -1 and OVERRIDE_GPU_LAYERS > 0) else request.n_gpu_layers
+        safe_gpu_layers = (
+            OVERRIDE_GPU_LAYERS
+            if (request.n_gpu_layers == -1 and OVERRIDE_GPU_LAYERS > 0)
+            else request.n_gpu_layers
         final_n_ctx = OVERRIDE_N_CTX if OVERRIDE_N_CTX > 0 else request.n_ctx
         
         print(f"Loading {request.model_name} for {request.worker_id} into VRAM...")
