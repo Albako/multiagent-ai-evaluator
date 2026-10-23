@@ -356,30 +356,30 @@ async def chat_endpoint(request: ChatRequest):
             # --- PHASE 1: WORKER EXECUTION (Initial vs Retry) ---
             if iteration == 0:
                 if request.pipeline_type == "parallel":
-                    w2_prompt = f"User Request: {request.message}\n\nProvide Security & Edge-Case Analysis:"
+                    w1_prompt = f"User Request: {request.message}\n\nProvide Security & Edge-Case Analysis:"
 
                     parallel_start = time.perf_counter()
                     w1_resp, w2_resp = await asyncio.gather(
-                        query_manager(PC1_MANAGER_URL, "worker1", prompt=context_prompt, system_prompt=worker1_sys, temperature=0.7),
-                        query_manager(PC2_MANAGER_URL, "worker2", prompt=w2_prompt, system_prompt=worker2_parallel_sys, temperature=0.2)
+                        query_manager(PC2_MANAGER_URL, "worker2", prompt=context_prompt, system_prompt=worker2_sys, temperature=0.7),
+                        query_manager(PC1_MANAGER_URL, "worker1", prompt=w1_prompt, system_prompt=worker1_parallel_sys, temperature=0.2)
                     )
                     parallel_wall_time_ms = round((time.perf_counter() - parallel_start) * 1000, 2)
 
                     task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
                     task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
 
-                    base_generation = w1_resp["text"]
-                    critique = w2_resp["text"]
+                    base_generation = w2_resp["text"]
+                    critique = w1_resp["text"]
 
-                    execution_trace.record_step(
-                        "Worker1_Parallel",
-                        "API_ERROR" if w1_resp["error"] else "SUCCESS",
-                        {"iteration": iteration, "length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
-                    )
                     execution_trace.record_step(
                         "Worker2_Parallel",
                         "API_ERROR" if w2_resp["error"] else "SUCCESS",
-                        {"iteration": iteration, "length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
+                        {"iteration": iteration, "length": len(base_generation), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
+                    )
+                    execution_trace.record_step(
+                        "Worker1_Parallel",
+                        "API_ERROR" if w1_resp["error"] else "SUCCESS",
+                        {"iteration": iteration, "length": len(critique), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
                     )
                     execution_trace.record_step(
                         "Parallel_Stage_Summary",
@@ -398,14 +398,14 @@ async def chat_endpoint(request: ChatRequest):
 
                 else:
                     # Sequential Pipeline (Iteration 0)
-                    w1_resp = await query_manager(PC1_MANAGER_URL, "worker1", prompt=context_prompt, system_prompt=worker1_sys, temperature=0.7)
-                    task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
-                    base_generation = w1_resp["text"]
+                    w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", prompt=context_prompt, system_prompt=worker2_sys, temperature=0.7)
+                    task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
+                    base_generation = w2_resp["text"]
 
                     execution_trace.record_step(
-                        "Worker1_Sequential",
-                        "API_ERROR" if w1_resp["error"] else "SUCCESS",
-                        {"iteration": iteration, "length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
+                        "Worker2_Sequential",
+                        "API_ERROR" if w2_resp["error"] else "SUCCESS",
+                        {"iteration": iteration, "length": len(base_generation), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
                     )
 
                     base_generation, is_poisoned = inject_hallucination_or_vulnerability(base_generation, request.mode)
@@ -413,14 +413,14 @@ async def chat_endpoint(request: ChatRequest):
                         execution_trace.record_step("Failure_Injector", "POISONED", {"iteration": iteration, "target": "Worker1", "payload_type": request.mode})
 
                     critique_prompt = f"User Request: {request.message}\n\nInitial Output:\n{base_generation}\n\nYour Critique:"
-                    w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", prompt=critique_prompt, system_prompt=worker2_review_sys, temperature=0.2)
-                    task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
-                    critique = w2_resp["text"]
+                    w1_resp = await query_manager(PC1_MANAGER_URL, "worker1", prompt=critique_prompt, system_prompt=worker1_review_sys, temperature=0.2)
+                    task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
+                    critique = w1_resp["text"]
 
                     execution_trace.record_step(
-                        "Worker2_Sequential",
-                        "API_ERROR" if w2_resp["error"] else "SUCCESS",
-                        {"iteration": iteration, "length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
+                        "Worker1_Sequential",
+                        "API_ERROR" if w1_resp["error"] else "SUCCESS",
+                        {"iteration": iteration, "length": len(critique), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
                     )
 
             else:
@@ -438,31 +438,31 @@ async def chat_endpoint(request: ChatRequest):
                     f"Provide a corrected, safe, and complete version fixing all reported issues:"
                 )
 
-                w1_resp = await query_manager(PC1_MANAGER_URL, "worker1", prompt=retry_prompt, system_prompt=worker1_sys, temperature=0.4)
-                task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
-                base_generation = w1_resp["text"]
+                w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", prompt=retry_prompt, system_prompt=worker2_sys, temperature=0.4)
+                task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
+                base_generation = w2_resp["text"]
 
                 execution_trace.record_step(
-                    "Worker1_Retry",
-                    "API_ERROR" if w1_resp["error"] else "SUCCESS",
-                    {"iteration": iteration, "length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
+                    "Worker2_Retry",
+                    "API_ERROR" if w2_resp["error"] else "SUCCESS",
+                    {"iteration": iteration, "length": len(base_generation), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
                 )
 
-                # Worker 2 audits the newly corrected output from Worker 1
+                # Worker 1 audits the newly corrected output from Worker 2
                 critique_prompt = (
                     f"User Request: {request.message}\n\n"
                     f"Previous Judge Feedback: {remediation_feedback}\n\n"
-                    f"Worker 1 Corrected Output:\n{base_generation}\n\n"
+                    f"Worker 2 Corrected Output:\n{base_generation}\n\n"
                     f"Verify if the flaws were properly fixed:"
                 )
-                w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", prompt=critique_prompt, system_prompt=worker2_review_sys, temperature=0.2)
-                task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
-                critique = w2_resp["text"]
+                w1_resp = await query_manager(PC1_MANAGER_URL, "worker1", prompt=critique_prompt, system_prompt=worker1_review_sys, temperature=0.2)
+                task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
+                critique = w1_resp["text"]
 
                 execution_trace.record_step(
-                    "Worker2_Retry_Audit",
-                    "API_ERROR" if w2_resp["error"] else "SUCCESS",
-                    {"iteration": iteration, "length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
+                    "Worker1_Retry_Audit",
+                    "API_ERROR" if w1_resp["error"] else "SUCCESS",
+                    {"iteration": iteration, "length": len(critique), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
                 )
 
             # --- PHASE 2: JUDGE EVALUATION & SYNTHESIS (PC3 with GBNF Schema) ---
@@ -482,7 +482,7 @@ async def chat_endpoint(request: ChatRequest):
 
             judge_sys = (
                 "You are the Lead Judge and Security Synthesizer. "
-                "Evaluate Worker 1's output and Worker 2's analysis. "
+                "Evaluate Worker 2's output and Worker 1's analysis. "
                 "Strictly flag any SQL Injection, command injection, missing validation, or hallucinations. "
                 f"{takeover_directive}"
             )
@@ -490,8 +490,8 @@ async def chat_endpoint(request: ChatRequest):
             judge_user_prompt = (
                 f"Iteration: {iteration} / {max_allowed_retries}\n"
                 f"User Request: {request.message}\n\n"
-                f"--- Worker 1 Output ---\n{base_generation}\n\n"
-                f"--- Worker 2 Analysis/Critique ---\n{critique}\n"
+                f"--- Worker 2 Output ---\n{base_generation}\n\n"
+                f"--- Worker 1 Analysis/Critique ---\n{critique}\n"
             )
 
             judge_resp = await query_manager(
@@ -574,8 +574,8 @@ async def chat_endpoint(request: ChatRequest):
             "token_cost": task_context.get_stats_dict(),
             "execution_trace": execution_trace.trace,
             "debug": {
-                "last_worker1_generation": base_generation,
-                "last_worker2_critique": critique
+                "last_worker2_generation": base_generation,
+                "last_worker1_critique": critique
             }
         }
 
