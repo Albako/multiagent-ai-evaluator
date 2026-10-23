@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
     message: str
     mode: str = "fast"  # "fast", "pro", "coding"
     pipeline_type: str = "parallel"  # "parallel" (concurrent workers) or "sequential" (generator -> reviewer)
+    max_retries: int = 1  # Variant A: how many times Worker1 can retry after REJECT before Variant B (Judge Takeover)
 
 
 # Class to track token budget and execution time across the entire pipeline
@@ -66,6 +67,7 @@ class ExecutionTrace:
             "details": details or {}
         })
 
+
 # Analytical steps first (Chain-of-Thought), verdict and final output last.
 class JudgeCodingVerdict(BaseModel):
     thought_process: str = Field(
@@ -89,7 +91,7 @@ class JudgeCodingVerdict(BaseModel):
         description="Final decision: APPROVE if safe, REJECT_SECURITY if vulnerabilities were found in worker output, REJECT_LOGIC if code is broken."
     )
     remediation_feedback: str = Field(
-        description="If verdict is REJECT_*, explain strictly what must be fixed in the next iteration. Empty if APPROVE."
+        description="If verdict is REJECT_*, explain strictly what must be fixed by the worker. Empty if APPROVE."
     )
     final_code: str = Field(
         description="The complete, sanitized, and optimized Python code ready for unit testing."
@@ -223,7 +225,8 @@ def update_history_with_response(session_id: str, response: str):
     global chat_histories
     chat_histories[session_id] += f"{response}\n"
 
-# Measuring individual node latency_ms
+
+# Measuring individual node latency_ms and passing system_prompt / json_schema
 async def query_manager(
     url: str,
     worker_id: str,
@@ -273,6 +276,7 @@ async def query_manager(
                 "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": latency_ms, "error": str(e)
             }
 
+
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     context_prompt = apply_sliding_window(request.session_id, request.message)
@@ -282,11 +286,17 @@ async def chat_endpoint(request: ChatRequest):
 
     execution_trace.record_step("Gateway", "INITIALIZED", {
         "mode": request.mode,
-        "pipeline_type": request.pipeline_type
+        "pipeline_type": request.pipeline_type,
+        "max_retries": request.max_retries
     })
 
     if request.mode == "fast":
-        resp_data = await query_manager(PC3_MANAGER_URL, "judge", context_prompt)
+        resp_data = await query_manager(
+            PC3_MANAGER_URL,
+            "judge",
+            prompt=context_prompt,
+            system_prompt="You are a helpful and fast AI assistant."
+        )
         task_context.add_token_usage(resp_data["prompt_tokens"], resp_data["completion_tokens"])
         response = resp_data["text"]
 
@@ -304,6 +314,7 @@ async def chat_endpoint(request: ChatRequest):
         update_history_with_response(request.session_id, response)
         return {
             "final_response": response,
+            "resolution_status": "FAST_SINGLE_AGENT",
             "iterations": 0,
             "token_cost": task_context.get_stats_dict(),
             "execution_trace": execution_trace.trace
@@ -312,154 +323,259 @@ async def chat_endpoint(request: ChatRequest):
     elif request.mode in ["pro", "coding"]:
         print(f"--- Starting {request.pipeline_type.upper()} Pipeline for {request.mode} mode ---")
 
-        if request.pipeline_type == "parallel":
-            # Parallel role-specialized execution
-            worker1_system_prompt = (
-                "You are a performance-focused software engineer. Write optimal, fast, and clean code for the user's request."
-                if request.mode == "coding" else
-                "You are a domain specialist. Provide a detailed, comprehensive answer to the user's request."
-            )
-            worker2_system_prompt = (
-                "You are a security engineer (SecOps). Provide a secure implementation or strict security constraints and edge-case validations for the user's request."
-                if request.mode == "coding" else
-                "You are a fact-checker and critical analyst. Identify potential pitfalls, edge cases, and verification criteria for the user's request."
-            )
+        max_allowed_retries = max(0, request.max_retries)
+        remediation_feedback = None
+        base_generation = ""
+        critique = ""
+        final_answer = ""
+        parsed_verdict_dict = {}
+        resolution_status = "UNKNOWN"
+        iterations_used = 0
 
-            w1_full_prompt = f"{worker1_system_prompt}\n\n{context_prompt}"
-            w2_full_prompt = f"{worker2_system_prompt}\n\nUser Request: {request.message}\n\nSecurity & Edge-Case Analysis:"
-
-            # Fire both requests simultaneously (PC1 and PC2 work at the same time)
-            parallel_start = time.perf_counter()
-            w1_resp, w2_resp = await asyncio.gather(
-                query_manager(PC1_MANAGER_URL, "worker1", w1_full_prompt, temperature=0.7),
-                query_manager(PC2_MANAGER_URL, "worker2", w2_full_prompt, temperature=0.2)
-            )
-            parallel_wall_time_ms = round((time.perf_counter() - parallel_start) * 1000, 2)
-
-            task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
-            task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
-
-            base_generation = w1_resp["text"]
-            critique = w2_resp["text"]
-
-            # Record individual worker traces with latency to expose the Straggler Effect (PC1 vs PC2)
-            execution_trace.record_step(
-                "Worker1_Parallel",
-                "API_ERROR" if w1_resp["error"] else "SUCCESS",
-                {"length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
-            )
-            execution_trace.record_step(
-                "Worker2_Parallel",
-                "API_ERROR" if w2_resp["error"] else "SUCCESS",
-                {"length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
-            )
-            execution_trace.record_step(
-                "Parallel_Stage_Summary",
-                "COMPLETED",
-                {
-                    "wall_clock_ms": parallel_wall_time_ms,
-                    "straggler_node": "Worker2 (PC2)" if w2_resp["latency_ms"] > w1_resp["latency_ms"] else "Worker1 (PC1)",
-                    "time_saved_ms": round((w1_resp["latency_ms"] + w2_resp["latency_ms"]) - parallel_wall_time_ms, 2)
-                }
-            )
-
-            # Failure Injection Phase (applied to Worker 1's output before Judge sees it)
-            base_generation, is_poisoned = inject_hallucination_or_vulnerability(base_generation, request.mode)
-            if is_poisoned:
-                execution_trace.record_step("Failure_Injector", "POISONED", {"target": "Worker1", "payload_type": request.mode})
-
-        else:
-            # Original Sequential Pipeline: Worker 1 (Generator) -> Failure Injector -> Worker 2 (Reviewer)
-            worker1_system_prompt = (
-                "You are an expert engineer. Write the best possible response/code for the following request."
-                if request.mode == "coding" else
-                "You are an expert assistant. Provide a comprehensive response to the user's request."
-            )
-            w1_resp = await query_manager(PC1_MANAGER_URL, "worker1", f"{worker1_system_prompt}\n\n{context_prompt}", temperature=0.7)
-            task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
-            base_generation = w1_resp["text"]
-
-            execution_trace.record_step(
-                "Worker1_Sequential",
-                "API_ERROR" if w1_resp["error"] else "SUCCESS",
-                {"length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
-            )
-
-            # Failure Injection Phase
-            base_generation, is_poisoned = inject_hallucination_or_vulnerability(base_generation, request.mode)
-            if is_poisoned:
-                execution_trace.record_step("Failure_Injector", "POISONED", {"target": "Worker1", "payload_type": request.mode})
-
-            # Council Critique
-            worker2_system_prompt = (
-                "You are a strict security and performance auditor. Review the following code for bugs, vulnerabilities, and inefficiencies. Be practical and concise."
-                if request.mode == "coding" else
-                "You are a critical reviewer. Analyze the following response for factual accuracy, logic, and clarity. Point out any flaws."
-            )
-            critique_prompt = f"{worker2_system_prompt}\n\nUser Request: {request.message}\n\nInitial Output:\n{base_generation}\n\nYour Critique:"
-            w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", critique_prompt, temperature=0.2)
-            task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
-            critique = w2_resp["text"]
-
-            execution_trace.record_step(
-                "Worker2_Sequential",
-                "API_ERROR" if w2_resp["error"] else "SUCCESS",
-                {"length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
-            )
-
-        # Judge Synthesis (PC3)
-        coding_instruction = (
-            "You MUST respond ONLY with a valid JSON containing 'verdict', 'base_code', 'security_flags', 'performance_notes', 'summary'."
-            if request.mode == "coding"
-            else "Provide the final unified response, fixing the issues raised by the council."
+        # Role definitions for Worker 1 and Worker 2
+        worker2_sys = (
+            "You are a performance-focused software engineer. Write optimal, fast, and clean Python code for the user's request."
+            if request.mode == "coding" else
+            "You are a domain specialist. Provide a detailed, comprehensive answer to the user's request."
+        )
+        worker1_parallel_sys = (
+            "You are a security engineer (SecOps). Provide strict security constraints, input validation rules, and safe coding patterns for the user's request."
+            if request.mode == "coding" else
+            "You are a fact-checker and critical analyst. Identify potential pitfalls, edge cases, and verification criteria for the user's request."
+        )
+        worker1_review_sys = (
+            "You are a strict security and performance auditor. Review the provided code for bugs, SQLi/RCE vulnerabilities, and inefficiencies. Be concise."
+            if request.mode == "coding" else
+            "You are a critical reviewer. Analyze the provided response for factual accuracy, logic, and safety flaws."
         )
 
-        judge_system_prompt = f"""You are the Lead Judge and Synthesizer.
-        You are reviewing outputs from two specialized AI Workers.
-        Your task is to evaluate their work, reject any insecure or hallucinated content, and produce the final unified output.
+        for iteration in range(max_allowed_retries + 1):
+            iterations_used = iteration + 1
+            is_last_attempt = (iteration == max_allowed_retries)
 
-        User Request: {request.message}
+            # --- PHASE 1: WORKER EXECUTION (Initial vs Retry) ---
+            if iteration == 0:
+                if request.pipeline_type == "parallel":
+                    w2_prompt = f"User Request: {request.message}\n\nProvide Security & Edge-Case Analysis:"
 
-        Worker 1 Output (Performance / Base Implementation):
-        {base_generation}
+                    parallel_start = time.perf_counter()
+                    w1_resp, w2_resp = await asyncio.gather(
+                        query_manager(PC1_MANAGER_URL, "worker1", prompt=context_prompt, system_prompt=worker1_sys, temperature=0.7),
+                        query_manager(PC2_MANAGER_URL, "worker2", prompt=w2_prompt, system_prompt=worker2_parallel_sys, temperature=0.2)
+                    )
+                    parallel_wall_time_ms = round((time.perf_counter() - parallel_start) * 1000, 2)
 
-        Worker 2 Output (Security Audit / Critical Analysis):
-        {critique}
+                    task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
+                    task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
 
-        {coding_instruction}
-        """
+                    base_generation = w1_resp["text"]
+                    critique = w2_resp["text"]
 
-        judge_resp = await query_manager(PC3_MANAGER_URL, "judge", judge_system_prompt, temperature=0.0)
-        task_context.add_token_usage(judge_resp["prompt_tokens"], judge_resp["completion_tokens"])
-        final_answer = judge_resp["text"]
+                    execution_trace.record_step(
+                        "Worker1_Parallel",
+                        "API_ERROR" if w1_resp["error"] else "SUCCESS",
+                        {"iteration": iteration, "length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
+                    )
+                    execution_trace.record_step(
+                        "Worker2_Parallel",
+                        "API_ERROR" if w2_resp["error"] else "SUCCESS",
+                        {"iteration": iteration, "length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
+                    )
+                    execution_trace.record_step(
+                        "Parallel_Stage_Summary",
+                        "COMPLETED",
+                        {
+                            "wall_clock_ms": parallel_wall_time_ms,
+                            "straggler_node": "Worker2 (PC2)" if w2_resp["latency_ms"] > w1_resp["latency_ms"] else "Worker1 (PC1)",
+                            "time_saved_ms": round((w1_resp["latency_ms"] + w2_resp["latency_ms"]) - parallel_wall_time_ms, 2)
+                        }
+                    )
 
-        execution_trace.record_step(
-            "Judge",
-            "API_ERROR" if judge_resp["error"] else "SUCCESS",
-            {"length": len(final_answer), "latency_ms": judge_resp["latency_ms"], "error": judge_resp["error"]}
-        )
+                    # Failure Injection Phase (only on iteration 0 to test detection & recovery)
+                    base_generation, is_poisoned = inject_hallucination_or_vulnerability(base_generation, request.mode)
+                    if is_poisoned:
+                        execution_trace.record_step("Failure_Injector", "POISONED", {"iteration": iteration, "target": "Worker1", "payload_type": request.mode})
 
-        if request.mode == "coding":
+                else:
+                    # Sequential Pipeline (Iteration 0)
+                    w1_resp = await query_manager(PC1_MANAGER_URL, "worker1", prompt=context_prompt, system_prompt=worker1_sys, temperature=0.7)
+                    task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
+                    base_generation = w1_resp["text"]
+
+                    execution_trace.record_step(
+                        "Worker1_Sequential",
+                        "API_ERROR" if w1_resp["error"] else "SUCCESS",
+                        {"iteration": iteration, "length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
+                    )
+
+                    base_generation, is_poisoned = inject_hallucination_or_vulnerability(base_generation, request.mode)
+                    if is_poisoned:
+                        execution_trace.record_step("Failure_Injector", "POISONED", {"iteration": iteration, "target": "Worker1", "payload_type": request.mode})
+
+                    critique_prompt = f"User Request: {request.message}\n\nInitial Output:\n{base_generation}\n\nYour Critique:"
+                    w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", prompt=critique_prompt, system_prompt=worker2_review_sys, temperature=0.2)
+                    task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
+                    critique = w2_resp["text"]
+
+                    execution_trace.record_step(
+                        "Worker2_Sequential",
+                        "API_ERROR" if w2_resp["error"] else "SUCCESS",
+                        {"iteration": iteration, "length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
+                    )
+
+            else:
+                # --- WORKER SELF-CORRECTION RETRY (iteration > 0) ---
+                execution_trace.record_step("Feedback_Loop", "RETRY_TRIGGERED", {
+                    "iteration": iteration,
+                    "remediation_feedback": remediation_feedback
+                })
+
+                retry_prompt = (
+                    f"{context_prompt}\n\n"
+                    f"[PREVIOUS ATTEMPT REJECTED BY JUDGE]\n"
+                    f"Rejected Output:\n{base_generation}\n\n"
+                    f"Mandatory Remediation Instructions from Judge:\n{remediation_feedback}\n\n"
+                    f"Provide a corrected, safe, and complete version fixing all reported issues:"
+                )
+
+                w1_resp = await query_manager(PC1_MANAGER_URL, "worker1", prompt=retry_prompt, system_prompt=worker1_sys, temperature=0.4)
+                task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
+                base_generation = w1_resp["text"]
+
+                execution_trace.record_step(
+                    "Worker1_Retry",
+                    "API_ERROR" if w1_resp["error"] else "SUCCESS",
+                    {"iteration": iteration, "length": len(base_generation), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
+                )
+
+                # Worker 2 audits the newly corrected output from Worker 1
+                critique_prompt = (
+                    f"User Request: {request.message}\n\n"
+                    f"Previous Judge Feedback: {remediation_feedback}\n\n"
+                    f"Worker 1 Corrected Output:\n{base_generation}\n\n"
+                    f"Verify if the flaws were properly fixed:"
+                )
+                w2_resp = await query_manager(PC2_MANAGER_URL, "worker2", prompt=critique_prompt, system_prompt=worker2_review_sys, temperature=0.2)
+                task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
+                critique = w2_resp["text"]
+
+                execution_trace.record_step(
+                    "Worker2_Retry_Audit",
+                    "API_ERROR" if w2_resp["error"] else "SUCCESS",
+                    {"iteration": iteration, "length": len(critique), "latency_ms": w2_resp["latency_ms"], "error": w2_resp["error"]}
+                )
+
+            # --- PHASE 2: JUDGE EVALUATION & SYNTHESIS (PC3 with GBNF Schema) ---
+            active_schema = (
+                JudgeCodingVerdict.model_json_schema()
+                if request.mode == "coding"
+                else JudgeProVerdict.model_json_schema()
+            )
+
+            takeover_directive = (
+                "CRITICAL: This is the final allowed iteration. Even if you set verdict to REJECT_*, "
+                "you MUST personally write the complete, fixed, and sanitized solution in 'final_code'/'final_response' (Judge Takeover)."
+                if is_last_attempt else
+                "If you set verdict to REJECT_*, provide clear 'remediation_feedback' for Worker 1 to fix it in the next iteration, "
+                "and set 'final_code'/'final_response' to 'PENDING_WORKER_RETRY' to save tokens."
+            )
+
+            judge_sys = (
+                "You are the Lead Judge and Security Synthesizer. "
+                "Evaluate Worker 1's output and Worker 2's analysis. "
+                "Strictly flag any SQL Injection, command injection, missing validation, or hallucinations. "
+                f"{takeover_directive}"
+            )
+
+            judge_user_prompt = (
+                f"Iteration: {iteration} / {max_allowed_retries}\n"
+                f"User Request: {request.message}\n\n"
+                f"--- Worker 1 Output ---\n{base_generation}\n\n"
+                f"--- Worker 2 Analysis/Critique ---\n{critique}\n"
+            )
+
+            judge_resp = await query_manager(
+                PC3_MANAGER_URL,
+                "judge",
+                prompt=judge_user_prompt,
+                system_prompt=judge_sys,
+                temperature=0.0,
+                json_schema=active_schema
+            )
+            task_context.add_token_usage(judge_resp["prompt_tokens"], judge_resp["completion_tokens"])
+            raw_judge_output = judge_resp["text"]
+
+            execution_trace.record_step(
+                "Judge_Evaluation",
+                "API_ERROR" if judge_resp["error"] else "SUCCESS",
+                {"iteration": iteration, "latency_ms": judge_resp["latency_ms"], "finish_reason": judge_resp.get("finish_reason")}
+            )
+
+            # Validate GBNF JSON response via Pydantic
             try:
-                cleaned_json = final_answer.strip().removeprefix("```json").removesuffix("```").strip()
-                json.loads(cleaned_json)
-                final_answer = cleaned_json
-                execution_trace.record_step("Judge_Validation", "JSON_VALIDATION_SUCCESS")
-            except json.JSONDecodeError:
-                print("Judge failed to return valid JSON.")
-                execution_trace.record_step("Judge_Validation", "JSON_VALIDATION_FAILED")
+                cleaned_json = raw_judge_output.strip().removeprefix("```json").removesuffix("```").strip()
+                if request.mode == "coding":
+                    verdict_obj = JudgeCodingVerdict.model_validate_json(cleaned_json)
+                    candidate_output = verdict_obj.final_code
+                else:
+                    verdict_obj = JudgeProVerdict.model_validate_json(cleaned_json)
+                    candidate_output = verdict_obj.final_response
+
+                parsed_verdict_dict = verdict_obj.model_dump()
+                verdict_status = verdict_obj.verdict
+
+                execution_trace.record_step("Judge_Validation", "SCHEMA_VALID", {
+                    "iteration": iteration,
+                    "verdict": verdict_status,
+                    "security_score": parsed_verdict_dict.get("security_score", parsed_verdict_dict.get("factual_consistency_score")),
+                    "flags_count": len(parsed_verdict_dict.get("security_flags", parsed_verdict_dict.get("detected_flaws", [])))
+                })
+
+            except Exception as e:
+                print(f"Judge Pydantic validation failed on iteration {iteration}: {e}")
+                execution_trace.record_step("Judge_Validation", "SCHEMA_FAILED", {"iteration": iteration, "error": str(e)})
+                final_answer = raw_judge_output
+                resolution_status = "SCHEMA_FALLBACK"
+                break
+
+            # --- PHASE 3: DECISION ROUTING (Approve vs Retry vs Takeover) ---
+            if verdict_status == "APPROVE":
+                final_answer = candidate_output
+                resolution_status = "APPROVED_FIRST_PASS" if iteration == 0 else "APPROVED_AFTER_WORKER_RETRY"
+                execution_trace.record_step("Pipeline_Resolution", resolution_status, {"iterations_total": iterations_used})
+                break
+
+            else:
+                # Verdict is REJECT_SECURITY, REJECT_LOGIC, or REJECT_HALLUCINATION
+                remediation_feedback = verdict_obj.remediation_feedback or "Fix all security and logic flaws identified in the audit."
+
+                if not is_last_attempt:
+                    # Loop continues to next iteration so Worker 1 can fix its mistake
+                    print(f"[Iteration {iteration}] Judge issued {verdict_status}. Routing back to Worker 1...")
+                    continue
+                else:
+                    # Max retries exhausted -> Judge takes matters into its own hands
+                    print(f"[Iteration {iteration}] Max retries reached with {verdict_status}. Executing Judge Takeover...")
+                    final_answer = candidate_output
+                    resolution_status = f"JUDGE_TAKEOVER_AFTER_{verdict_status}"
+                    execution_trace.record_step("Pipeline_Resolution", "JUDGE_TAKEOVER", {
+                        "trigger_verdict": verdict_status,
+                        "iterations_total": iterations_used
+                    })
+                    break
 
         update_history_with_response(request.session_id, final_answer)
 
         return {
             "final_response": final_answer,
-            "iterations": 1,
+            "resolution_status": resolution_status,
+            "iterations": iterations_used,
+            "judge_rubric": parsed_verdict_dict,
             "token_cost": task_context.get_stats_dict(),
             "execution_trace": execution_trace.trace,
             "debug": {
-                "base_generation": base_generation,
-                "council_critique": critique,
-                "judge_raw": final_answer
+                "last_worker1_generation": base_generation,
+                "last_worker2_critique": critique
             }
         }
 
