@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # forcing compilation of the llama.cpp library for CUDA cores
-ENV CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=72 -DGGML_CUDA_NO_VMM=on"
+ENV CMAKE_ARGS="-DGGML_CUDA=on -DGGML_CUDA_FA_ALL_QUANTS=ON -DGGML_CUDA_NO_VMM=ON -DCMAKE_CUDA_ARCHITECTURES=72 DCMAKE_BUILD_TYPE=Release"
 ENV FORCE_CMAKE=1
 
 # Copy only requirements first to leverage Docker layer caching

@@ -66,7 +66,7 @@ services:
       - OVERRIDE_N_CTX=4096
       - N_BATCH=256
       - USE_MMAP=false
-      - FLASH_ATTN=false
+      - FLASH_ATTN=true
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
     restart: unless-stopped
