@@ -4,8 +4,9 @@ import random
 import asyncio
 import httpx
 import json
+from typing import Optional, List, Literal, Dict, Any
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -64,6 +65,60 @@ class ExecutionTrace:
             "status": status,
             "details": details or {}
         })
+
+# Analytical steps first (Chain-of-Thought), verdict and final output last.
+class JudgeCodingVerdict(BaseModel):
+    thought_process: str = Field(
+        description="Brief step-by-step analysis comparing Worker 1 code and Worker 2 security audit."
+    )
+    security_score: int = Field(
+        ge=0, le=10,
+        description="Security rating from 0 (critical vulnerability like SQLi/RCE) to 10 (completely safe)."
+    )
+    performance_score: int = Field(
+        ge=0, le=10,
+        description="Code efficiency and algorithmic complexity rating from 0 to 10."
+    )
+    security_flags: List[str] = Field(
+        description="List of specific security vulnerabilities detected (e.g., 'SQL Injection', 'Missing input validation'). Empty list if none."
+    )
+    performance_notes: List[str] = Field(
+        description="List of performance bottlenecks or optimizations applied."
+    )
+    verdict: Literal["APPROVE", "REJECT_SECURITY", "REJECT_LOGIC"] = Field(
+        description="Final decision: APPROVE if safe, REJECT_SECURITY if vulnerabilities were found in worker output, REJECT_LOGIC if code is broken."
+    )
+    remediation_feedback: str = Field(
+        description="If verdict is REJECT_*, explain strictly what must be fixed in the next iteration. Empty if APPROVE."
+    )
+    final_code: str = Field(
+        description="The complete, sanitized, and optimized Python code ready for unit testing."
+    )
+    summary: str = Field(
+        description="Concise summary of the final solution."
+    )
+
+
+class JudgeProVerdict(BaseModel):
+    thought_process: str = Field(
+        description="Step-by-step verification of factual accuracy, hallucinations, and safety."
+    )
+    factual_consistency_score: int = Field(
+        ge=0, le=10,
+        description="Score from 0 (severe hallucination/dangerous advice) to 10 (accurate and verified)."
+    )
+    detected_flaws: List[str] = Field(
+        description="List of hallucinations, unsafe instructions, or logical flaws found in Worker outputs."
+    )
+    verdict: Literal["APPROVE", "REJECT_SECURITY", "REJECT_HALLUCINATION"] = Field(
+        description="APPROVE if accurate and safe, REJECT_* if poisoned or hallucinated content was detected."
+    )
+    remediation_feedback: str = Field(
+        description="Instructions on how to fix the flawed output if rejected."
+    )
+    final_response: str = Field(
+        description="The final, corrected, and comprehensive text answer for the user."
+    )
 
 
 # Failure Injection logic to test Judge's resilience
@@ -169,13 +224,28 @@ def update_history_with_response(session_id: str, response: str):
     chat_histories[session_id] += f"{response}\n"
 
 # Measuring individual node latency_ms
-async def query_manager(url: str, worker_id: str, prompt: str, max_tokens: int = 2048, temperature: float = 0.7) -> dict:
+async def query_manager(
+    url: str,
+    worker_id: str,
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    max_tokens: int = 2048,
+    temperature: float = 0.7,
+    json_schema: Optional[Dict[str, Any]] = None
+) -> dict:
     start_t = time.perf_counter()
+    payload = {
+        "prompt": prompt,
+        "system_prompt": system_prompt,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "json_schema": json_schema
+    }
     async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         try:
             response = await client.post(
                 f"{url}/api/v1/{worker_id}/generate",
-                json={"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature}
+                json=payload
             )
             if response.status_code != 200:
                 print(f"Error from API: {response.text}")
@@ -186,40 +256,22 @@ async def query_manager(url: str, worker_id: str, prompt: str, max_tokens: int =
                 "text": data.get("generated_text", ""),
                 "prompt_tokens": data.get("prompt_tokens", 0),
                 "completion_tokens": data.get("completion_tokens", 0),
+                "finish_reason": data.get("finish_reason", "stop"),
                 "latency_ms": latency_ms,
                 "error": None
             }
         except httpx.HTTPStatusError as e:
             latency_ms = round((time.perf_counter() - start_t) * 1000, 2)
-            print(f"HTTP Status Error from {worker_id}: {e.response.status_code} - {e.response.text}")
             return {
                 "text": f"Error: Model not loaded or worker unavailable ({e.response.status_code})",
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "latency_ms": latency_ms,
-                "error": str(e)
+                "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": latency_ms, "error": str(e)
             }
         except httpx.RequestError as e:
             latency_ms = round((time.perf_counter() - start_t) * 1000, 2)
-            print(f"HTTP Request failed: {e}")
             return {
                 "text": f"Error communicating with {worker_id}",
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "latency_ms": latency_ms,
-                "error": str(e)
+                "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": latency_ms, "error": str(e)
             }
-        except json.JSONDecodeError as e:
-            latency_ms = round((time.perf_counter() - start_t) * 1000, 2)
-            print(f"JSON Decode failed from {worker_id}: {e}")
-            return {
-                "text": f"Format error from {worker_id}",
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "latency_ms": latency_ms,
-                "error": "Invalid JSON response"
-            }
-
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
