@@ -1,7 +1,7 @@
 # MultiAgent AI Evaluator
 
 ## Hardware
-My project is hosted on 4 different hosts:
+My project is hosted on 5 different devices:
 1. PC0 API: My x86 server.
 2. PC1 Worker1: R9 7945HX 64GB 5200MT/s + RTX 4060 (mobile) 8GB GDDR6
 3. PC2 Worker2: Nvidia Jetson AGX Xavier Developer Kit 16GB 4267MT/s with MAXN mode enabled
