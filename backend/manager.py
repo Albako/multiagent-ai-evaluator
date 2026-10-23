@@ -24,13 +24,15 @@ OVERRIDE_N_CTX = int(os.getenv("OVERRIDE_N_CTX", 0))
 class LoadModelRequest(BaseModel):
     worker_id: str
     model_name: str
-    n_gpu_layers: int = -1 # Change this for your config. -1 = all the layers to the GPU; 0 = all the layers to the CPU; 15 = 15 layers to the GPU and the rest (if there is a rest) goes to the CPU 
+    n_gpu_layers: int = -1 # -1 = all layers to GPU; 0 = CPU only 
     n_ctx: int = 8192
 
 class GenerateRequest(BaseModel):
     prompt: str
+    system_prompt: Optional[str] = None
     max_tokens: int = 2048
     temperature: float = 0.7
+    json_schema: Optional[Dict[str, Any]] = None # Triggers GBNF grammar enforcement in llama.cpp
 
 @app.post("/api/v1/system/load_model")
 async def load_model(request: LoadModelRequest):
@@ -73,42 +75,60 @@ async def load_model(request: LoadModelRequest):
         raise HTTPException(status_code=500, detail=error_msg)
 
 @app.post("/api/v1/{worker_id}/generate")
-async def generate_text(worker_id: str, request: GenerateRequest):
+def generate_text(worker_id: str, request: GenerateRequest):
     if worker_id not in active_models:
         raise HTTPException(status_code=400, detail=f"No active model loaded for worker ID: {worker_id}")
 
     llm = active_models[worker_id]
+    lock = model_locks[worker_id]
+
+    messages = []
+    if request.system_prompt:
+        messages.append({"role": "system", "content": request.system_prompt})
+    messages.append({"role": "user", "content": request.prompt})
+
+    # Configure GBNF structured output if json_schema is provided
+    response_format = None
+    effective_repeat_penalty = 1.15
+    if request.json_schema:
+        response_format = {
+            "type": "json_object",
+            "schema": request.json_schema
+        }
+        effective_repeat_penalty = 1.02
 
     try:
-        response = llm.create_chat_completion(
-            messages=[
-                {"role": "user", "content": request.prompt}
-            ],
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            repeat_penalty=1.15  # penalty for going into loops
-        )
-        
-        # Native usage extraction for Pareto/Cost analysis
+        with lock:
+            response = llm.create_chat_completion(
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                repeat_penalty_effective_repeat_penalty,
+                response_format=response_format
+            )
+
         usage = response.get("usage", {})
         p_tokens = usage.get("prompt_tokens", 0)
         c_tokens = usage.get("completion_tokens", 0)
+        finish_reason = response["choices"][0].get("finish_reason", "stop")
 
         return {
-            "worker_id": worker_id, 
+            "worker_id": worker_id,
             "generated_text": response["choices"][0]["message"]["content"].strip(),
             "prompt_tokens": p_tokens,
             "completion_tokens": c_tokens,
-            "total_tokens": p_tokens + c_tokens
+            "total_tokens": p_tokens + c_tokens,
+            "finish_reason": finish_reason
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
 @app.post("/api/v1/system/clear_all")
 async def clear_all_models():
-    global active_models
+    global active_models, model_locks
 
     active_models.clear()
+    model_locks.clear()
     gc.collect()
 
-    return {"status": "success", "message": "All models have been unloaded from VRAM."}
+    return {"status": "success", "message": "All models have been unloaded from RAM/VRAM."}
