@@ -1,6 +1,8 @@
 import os
 import gc
 import traceback
+import threading
+from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from llama_cpp import Llama
@@ -54,6 +56,7 @@ async def load_model(request: LoadModelRequest):
             OVERRIDE_GPU_LAYERS
             if (request.n_gpu_layers == -1 and OVERRIDE_GPU_LAYERS > 0)
             else request.n_gpu_layers
+        )
         final_n_ctx = OVERRIDE_N_CTX if OVERRIDE_N_CTX > 0 else request.n_ctx
         
         print(f"Loading {request.model_name} for {request.worker_id} into VRAM...")
