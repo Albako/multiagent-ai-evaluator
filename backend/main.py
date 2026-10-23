@@ -18,6 +18,7 @@ chat_histories = {}
 PC1_MANAGER_URL = os.getenv("PC1_MANAGER_URL", "http://localhost:8001")
 PC2_MANAGER_URL = os.getenv("PC2_MANAGER_URL", "http://localhost:8002")
 PC3_MANAGER_URL = os.getenv("PC3_MANAGER_URL", "http://localhost:8003")
+PC4_MANAGER_URL = os.getenv("PC4_MANAGER_URL", "http://localhost:8004")
 
 API_TIMEOUT = 800.0
 
@@ -181,6 +182,7 @@ async def initialize_mode(request: InitModeRequest):
         prefix = "PRO" if mode == "pro" else "CODING"
         worker1_model = os.getenv(f"{prefix}_WORKER_1_MODEL")
         worker2_model = os.getenv(f"{prefix}_WORKER_2_MODEL")
+        worker3_model = os.getenv(f"{prefix}_WORKER_3_MODEL")
         judge_model = os.getenv(f"{prefix}_JUDGE_MODEL")
 
         if not all([worker1_model, worker2_model, judge_model]):
@@ -190,9 +192,10 @@ async def initialize_mode(request: InitModeRequest):
         await asyncio.gather(
             load_model_on_manager(PC1_MANAGER_URL, "worker1", worker1_model, n_gpu_layers=55),
             load_model_on_manager(PC2_MANAGER_URL, "worker2", worker2_model, n_gpu_layers=-1),
+            load_model_on_manager(PC3_MANAGER_URL, "worker3", worker3_model, n_gpu_layers=-1),
             load_model_on_manager(PC3_MANAGER_URL, "judge", judge_model, n_gpu_layers=10)
         )
-        return {"status": "success", "message": f"{mode.capitalize()} mode distributed and loaded concurrently across 3 nodes."}
+        return {"status": "success", "message": f"{mode.capitalize()} mode distributed and loaded concurrently across 4 nodes."}
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown mode: {mode}")
@@ -338,7 +341,7 @@ async def chat_endpoint(request: ChatRequest):
             if request.mode == "coding" else
             "You are a domain specialist. Provide a detailed, comprehensive answer to the user's request."
         )
-        worker1_parallel_sys = (
+        worker3_parallel_sys = (
             "You are a security engineer (SecOps). Provide strict security constraints, input validation rules, and safe coding patterns for the user's request."
             if request.mode == "coding" else
             "You are a fact-checker and critical analyst. Identify potential pitfalls, edge cases, and verification criteria for the user's request."
@@ -359,17 +362,19 @@ async def chat_endpoint(request: ChatRequest):
                     w1_prompt = f"User Request: {request.message}\n\nProvide Security & Edge-Case Analysis:"
 
                     parallel_start = time.perf_counter()
-                    w1_resp, w2_resp = await asyncio.gather(
+                    w1_resp, w2_resp, w3_resp = await asyncio.gather(
                         query_manager(PC2_MANAGER_URL, "worker2", prompt=context_prompt, system_prompt=worker2_sys, temperature=0.7),
-                        query_manager(PC1_MANAGER_URL, "worker1", prompt=w1_prompt, system_prompt=worker1_parallel_sys, temperature=0.2)
+                        query_manager(PC1_MANAGER_URL, "worker1", prompt=w1_prompt, system_prompt=worker1_parallel_sys, temperature=0.2),
+                        query_manager(PC3_MANAGER_URL, "worker3", prompt=w3_prompt, system_prompt=worker3_review_sys, temperature=0.3)
                     )
                     parallel_wall_time_ms = round((time.perf_counter() - parallel_start) * 1000, 2)
 
                     task_context.add_token_usage(w1_resp["prompt_tokens"], w1_resp["completion_tokens"])
                     task_context.add_token_usage(w2_resp["prompt_tokens"], w2_resp["completion_tokens"])
+                    task_context.add_token_usage(w3_resp["prompt_tokens"], w3_resp["completion_tokens"])
 
                     base_generation = w2_resp["text"]
-                    critique = w1_resp["text"]
+                    critique = f"[SecOps Feedback]:\n{w2_resp['text']}\n\n[QA/Architecture Feedback]:\n{w3_resp['text']}"
 
                     execution_trace.record_step(
                         "Worker2_Parallel",
@@ -465,7 +470,7 @@ async def chat_endpoint(request: ChatRequest):
                     {"iteration": iteration, "length": len(critique), "latency_ms": w1_resp["latency_ms"], "error": w1_resp["error"]}
                 )
 
-            # --- PHASE 2: JUDGE EVALUATION & SYNTHESIS (PC3 with GBNF Schema) ---
+            # --- PHASE 2: JUDGE EVALUATION & SYNTHESIS ---
             active_schema = (
                 JudgeCodingVerdict.model_json_schema()
                 if request.mode == "coding"
