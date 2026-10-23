@@ -10,7 +10,8 @@ app = FastAPI(title="Dynamic Model Manager")
 # Program manages which models to load into the memory
 # Key is worker_id (worker1 or judge)
 # Value is instantiated Llama object
-active_models = {}
+active_models: Dict[str, Llama] = {}
+model_locks: Dict[str, threading.Lock] = {}
 
 # Getting number of CPU cores
 LLAMA_THREADS = int(os.getenv("LLAMA_THREADS", 8))
