@@ -24,7 +24,7 @@ and in the Nvidia Jeston AGX Xavier arm64 (Worker2):
 ```bash
 ./start.sh pc2
 ```
-and in the MacBook arm64 (Worker3):
+and in the MacBook arm64 (Worker3) - MacBook has a seperate script because it doesn't use Docker, because Docker can't use Apple Silicone GPU:
 ```bash
 ./start_mac.sh
 ```
