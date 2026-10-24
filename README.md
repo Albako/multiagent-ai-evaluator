@@ -3,10 +3,10 @@
 ## Hardware
 My project is hosted on 5 different devices:
 1. PC0 API: My x86 server.
-2. PC1 Worker1: R9 7945HX 64GB 5200MT/s + RTX 4060 (mobile) 8GB GDDR6
-3. PC2 Worker2: Nvidia Jetson AGX Xavier Developer Kit 16GB 4267MT/s with MAXN mode enabled
-4. PC3 Worker3: MacBook Pro M1 Pro 16GB
-5. PC4 Judge: i7-14700KF 64GB 6400MT/s + RTX 4070 Ti 12GB GDDR6X
+2. PC1 Worker1: R9 7945HX 64GB 83GB/s + RTX 4060 (mobile) 8GB 256GB/s
+3. PC2 Worker2: Nvidia Jetson AGX Xavier Developer Kit 16GB 137GB/s with MAXN mode enabled
+4. PC3 Worker3: MacBook Pro M1 Pro 16GB 200GB/s
+5. PC4 Judge: i7-14700KF 64GB 102GB/s + RTX 4070 Ti 12GB 504GB/s
 
 ## Back-end
 ### Starting the cluster
