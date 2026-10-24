@@ -76,7 +76,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.api
-    container_name: model_manager_pc4
+    container_name: model_manager_pc3
     ports:
       - "8003:8003"
     env_file:
@@ -85,7 +85,7 @@ services:
       - MANAGER_PORT=8003
       - NODE_ROLE=worker3
     restart: unless-stopped
-    profiles: ["pc4"]
+    profiles: ["pc3"]
 
   manager_judge:
     build:
