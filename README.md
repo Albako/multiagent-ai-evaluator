@@ -26,7 +26,7 @@ and in the Nvidia Jeston AGX Xavier arm64 (Worker2):
 ```
 and in the MacBook arm64 (Worker3):
 ```bash
-...
+./start_mac.sh
 ```
 and finally the i7+4070Ti x86 (Judge):
 ```bash
