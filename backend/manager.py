@@ -47,7 +47,8 @@ async def load_model(request: LoadModelRequest):
         del active_models[request.worker_id]
         gc.collect()
 
-    model_path = os.path.join("/models", request.model_name)
+    MODELS_DIR = os.getenv("MODELS_DIR", "/models")
+    model_path = os.path.join(MODELS_DIR, request.model_name)
 
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail=f"Page...I mean model not found at {model_path}")
