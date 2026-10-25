@@ -10,7 +10,7 @@ My project is hosted on 5 different devices:
 
 ## Back-end
 ### Starting the cluster
-Make sure to edit the IP adresses in the `.env` file (`.env` will create itself from `.env.example` after running the `./start.sh pcX` script).
+Make sure to edit the IP adresses in the `.env` file (`.env` will create itself from `.env.example` after running the `./start.sh pcX`/`./start_mac.sh` script).
 
 In order to start the cluster use this command in the API host:
 ```bash
