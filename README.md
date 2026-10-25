@@ -54,8 +54,23 @@ print('--- Success ---')
 "
 ```
 PC3:
+If the venv is activated by using `source venv/bin/activate`:
 ```bash
-
+./venv/bin/python3 -c "
+from llama_cpp import Llama
+print('--- Testing on PC3 (Apple Metal) ---')
+llm = Llama(model_path='./models/gemma-4-12b-it-UD-Q4_K_XL.gguf', n_gpu_layers=-1, n_ctx=4096, n_threads=6)
+print('--- Success ---')
+"
+```
+If it isn't:
+```bash
+python3 -c "
+from llama_cpp import Llama
+print('--- Testing on PC3 (Apple Metal) ---')
+llm = Llama(model_path='./models/gemma-4-12b-it-UD-Q4_K_XL.gguf', n_gpu_layers=-1, n_ctx=4096, n_threads=6)
+print('--- Success ---')
+"
 ```
 PC4:
 ```bash
