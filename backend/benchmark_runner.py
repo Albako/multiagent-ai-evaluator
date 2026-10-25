@@ -25,7 +25,8 @@ def run_unit_tests_in_sandbox(generated_code: str, unit_tests: str) -> dict:
     if not generated_code.strip():
         return {"passed": False, "exec_ms": 0.0, "error": "EmptyCode"}
 
-    full_script = f"{generated_code}\n\n# --- UNIT TESTS ---\n{unit_tests}\n"
+    prelude = "from typing import *\nimport math, collections, heapq, itertools, re, os, sys\n"
+    full_script = f"{prelude}\n{generated_code}\n\n# --- UNIT TESTS ---\n{unit_tests}\n"
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
         tmp.write(full_script)
         tmp_path = Path(tmp.name)
