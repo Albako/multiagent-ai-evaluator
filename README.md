@@ -53,16 +53,7 @@ llm = Llama(model_path='/models/gemma-4-E4B-it-Q6_K.gguf', n_gpu_layers=24, n_ct
 print('--- Success ---')
 "
 ```
-PC3 if the venv is activated by using `source venv/bin/activate`:
-```bash
-./venv/bin/python3 -c "
-from llama_cpp import Llama
-print('--- Testing on PC3 (Apple Metal) ---')
-llm = Llama(model_path='./models/gemma-4-12b-it-UD-Q4_K_XL.gguf', n_gpu_layers=-1, n_ctx=4096, n_threads=6)
-print('--- Success ---')
-"
-```
-PC3 if it isn't:
+PC3:
 ```bash
 python3 -c "
 from llama_cpp import Llama
