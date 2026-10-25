@@ -271,13 +271,13 @@ def plot_charts(coding_data: dict):
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    report_md = ["# Raport Statystyczny Benchmarku (Rozdział 4)\n"]
+    report_md = ["# Statistic Benchmark Raport\n"]
 
     coding_file = Path("results_30_coding.json")
     if coding_file.exists():
         c_data = analyze_coding_results(coding_file)
-        report_md.append(rows_to_markdown_table(c_data["summary_rows"], "Tabela 1: Wyniki zbiorcze dla 30 zadań programistycznych"))
-        report_md.append(rows_to_markdown_table(c_data["cat_rows"], "Tabela 2: Wyniki zadań programistycznych wg warstw złożoności"))
+        report_md.append(rows_to_markdown_table(c_data["summary_rows"], "Table 1: Results for 30 coding excersises"))
+        report_md.append(rows_to_markdown_table(c_data["cat_rows"], "Table 2: Results for coding excersises per layers of complexity"))
 
         node_rows = [
             {
@@ -289,18 +289,18 @@ def main():
             }
             for node, ms_list in sorted(c_data["node_ms_global"].items())
         ]
-        report_md.append(rows_to_markdown_table(node_rows, "Tabela 3: Opóźnienia poszczególnych węzłów obliczeniowych (PC1–PC4)"))
-        report_md.append(f"**Wąskie gardło (Straggler Node counts w trybie Parallel):** `{json.dumps(c_data['straggler_counts'])}`\n")
-        report_md.append(f"**Średni zaoszczędzony czas dzięki zrównolegleniu (`time_saved_ms`):** `{c_data['mean_parallel_saved_ms']} ms`\n")
+        report_md.append(rows_to_markdown_table(node_rows, "Table 3: Latency per node"))
+        report_md.append(f"**Bottleneck (Straggler Node counts in Parallel mode):** `{json.dumps(c_data['straggler_counts'])}`\n")
+        report_md.append(f"**Average time saved by parallelization (`time_saved_ms`):** `{c_data['mean_parallel_saved_ms']} ms`\n")
 
         plot_charts(c_data)
 
     text_file = Path("results_50_text.json")
     if text_file.exists():
         t_data = analyze_text_results(text_file)
-        report_md.append(rows_to_markdown_table(t_data["summary_rows"], "Tabela 4: Wyniki zbiorcze dla 50 zadań tekstowych"))
+        report_md.append(rows_to_markdown_table(t_data["summary_rows"], "Table 4: Results for 50 text excersises"))
 
-    out_md_path = OUTPUT_DIR / "thesis_tables_summary.md"
+    out_md_path = OUTPUT_DIR / "tables_summary.md"
     out_md_path.write_text("\n".join(report_md), encoding="utf-8")
     print(f"Analysis complete! Tables and charts saved in: {OUTPUT_DIR.resolve()}")
 
