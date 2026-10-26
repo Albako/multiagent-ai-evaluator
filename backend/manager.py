@@ -111,7 +111,7 @@ def generate_text(worker_id: str, request: GenerateRequest):
                 messages=messages,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
-                repeat_penalty_effective_repeat_penalty,
+                repeat_penalty=effective_repeat_penalty,
                 response_format=response_format
             )
 
