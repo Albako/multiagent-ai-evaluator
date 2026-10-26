@@ -68,8 +68,8 @@ mkdir -p "$MODELS_DIR"
 export MODELS_DIR="$MODELS_DIR"
 export MANAGER_PORT=8003
 export NODE_ROLE="worker3"
-export LLAMA_THREADS=6
-export LLAMA_THREADS_BATCH=6
+export LLAMA_THREADS=8
+export LLAMA_THREADS_BATCH=8
 export N_BATCH=512
 export USE_MMAP="true"
 export FLASH_ATTN="true"
