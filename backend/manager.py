@@ -39,7 +39,7 @@ class GenerateRequest(BaseModel):
 
 @app.post("/api/v1/system/load_model")
 async def load_model(request: LoadModelRequest):
-    global active_models
+    global active_models, model_locks
 
     # checks if a model is already loaded
     if request.worker_id in active_models:
@@ -75,13 +75,16 @@ async def load_model(request: LoadModelRequest):
             verbose=True
         )
         active_models[request.worker_id] = llm
+        if request.worker_id not in model_locks:
+            model_locks[request.worker_id] = threading.Lock()
+            
         return {"status": "success", "message": f"Successfully loaded {request.model_name} for {request.worker_id}"}
     except Exception as e:
         error_msg = f"Failed to load model: {str(e)}"
         print(error_msg, flush=True)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=error_msg)
-
+        
 @app.post("/api/v1/{worker_id}/generate")
 def generate_text(worker_id: str, request: GenerateRequest):
     if worker_id not in active_models:
