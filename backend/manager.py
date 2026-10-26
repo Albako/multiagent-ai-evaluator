@@ -39,7 +39,7 @@ class GenerateRequest(BaseModel):
 
 @app.post("/api/v1/system/load_model")
 async def load_model(request: LoadModelRequest):
-    global active_models
+    global active_models, model_locks
 
     # checks if a model is already loaded
     if request.worker_id in active_models:
@@ -47,16 +47,13 @@ async def load_model(request: LoadModelRequest):
         del active_models[request.worker_id]
         gc.collect()
 
-    model_path = os.path.join("/models", request.model_name)
+    MODELS_DIR = os.getenv("MODELS_DIR", "/models")
+    model_path = os.path.join(MODELS_DIR, request.model_name)
 
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail=f"Page...I mean model not found at {model_path}")
     try:
-        safe_gpu_layers = (
-            OVERRIDE_GPU_LAYERS
-            if (request.n_gpu_layers == -1 and OVERRIDE_GPU_LAYERS > 0)
-            else request.n_gpu_layers
-        )
+        safe_gpu_layers = OVERRIDE_GPU_LAYERS if OVERRIDE_GPU_LAYERS > 0 else request.n_gpu_layers
         final_n_ctx = OVERRIDE_N_CTX if OVERRIDE_N_CTX > 0 else request.n_ctx
         
         print(f"Loading {request.model_name} for {request.worker_id} into VRAM...")
@@ -74,13 +71,16 @@ async def load_model(request: LoadModelRequest):
             verbose=True
         )
         active_models[request.worker_id] = llm
+        if request.worker_id not in model_locks:
+            model_locks[request.worker_id] = threading.Lock()
+            
         return {"status": "success", "message": f"Successfully loaded {request.model_name} for {request.worker_id}"}
     except Exception as e:
         error_msg = f"Failed to load model: {str(e)}"
         print(error_msg, flush=True)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=error_msg)
-
+        
 @app.post("/api/v1/{worker_id}/generate")
 def generate_text(worker_id: str, request: GenerateRequest):
     if worker_id not in active_models:
@@ -110,7 +110,7 @@ def generate_text(worker_id: str, request: GenerateRequest):
                 messages=messages,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
-                repeat_penalty_effective_repeat_penalty,
+                repeat_penalty=effective_repeat_penalty,
                 response_format=response_format
             )
 

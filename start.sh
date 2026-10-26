@@ -11,10 +11,11 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "Initialization complete. Please configure your IPs in the $ENV_FILE file."
     echo "After configuring, run this script again with the desired profile."
     echo "Available profiles:"
-    echo "  pc0          - Central API server (CPU only)"
-    echo "  pc1          - Worker 1 Node (GPU)"
-    echo "  pc2          - Worker 2 Node (GPU)"
-    echo "  pc3          - Judge Node (GPU)"
+    echo "  pc0          - Central API server"
+    echo "  pc1          - Worker 1 Node"
+    echo "  pc2          - Worker 2 Node"
+    echo "  pc3          - Worker 3 Node"
+    echo "  pc3          - Judge Node"
     exit 1
 fi
 

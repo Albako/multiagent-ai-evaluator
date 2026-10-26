@@ -72,23 +72,38 @@ services:
     restart: unless-stopped
     profiles: ["pc2"]
 
+  manager_worker3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
+    container_name: model_manager_pc3
+    ports:
+      - "8003:8003"
+    env_file:
+      - .env
+    environment:
+      - MANAGER_PORT=8003
+      - NODE_ROLE=worker3
+    restart: unless-stopped
+    profiles: ["pc3"]
+
   manager_judge:
     build:
       context: ./backend
       dockerfile: Dockerfile.intel
-    container_name: model_manager_pc3
+    container_name: model_manager_pc4
     <<: *gpu-defaults
     ports:
-      - "8003:8003"
+      - "8004:8004"
     volumes:
       - ./models:/models:z
     cpuset: "0,2,4,6,8,10,12,14"
     env_file:
       - .env
     environment:
-      - MANAGER_PORT=8003
+      - MANAGER_PORT=8004
       - NODE_ROLE=judge
       - LLAMA_THREADS=8
       - LLAMA_THREADS_BATCH=8
     restart: unless-stopped
-    profiles: ["pc3"]
+    profiles: ["pc4"]
