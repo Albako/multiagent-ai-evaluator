@@ -55,7 +55,7 @@ print('--- Success ---')
 ```
 PC3:
 ```bash
-python3 -c "
+./.venv_mac/bin/python3 -c "
 from llama_cpp import Llama
 print('--- Testing ---')
 llm = Llama(model_path='./models/gemma-4-12b-it-Q4_1.gguf', n_gpu_layers=-1, n_ctx=4096, n_threads=6)
