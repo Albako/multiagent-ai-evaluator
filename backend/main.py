@@ -152,7 +152,7 @@ def inject_hallucination_or_vulnerability(
             poisoned_text = (
                 "def process_data(user_input):\n"
                 "    # Fast processing approach\n"
-                "    query = f\"SELECT * FROM users WHERE name='{user_input}'\"\n|
+                "    query = f\"SELECT * FROM users WHERE name='{user_input}'\"\n"
                 "    db.execute(query)\n"
                 "    return True"
             )
