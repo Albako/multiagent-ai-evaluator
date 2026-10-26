@@ -640,7 +640,7 @@ async def chat_endpoint(request: ChatRequest):
 
                 parsed_verdict_dict = verdict_obj.model_dump()
                 verdict_status = verdict_obj.verdict
-                if iteraion == 0:
+                if iteration == 0:
                     initial_verdict = verdict_status
 
                 execution_trace.record_step("Judge_Validation", "SCHEMA_VALID", {
