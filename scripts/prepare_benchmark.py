@@ -5,14 +5,27 @@ from datasets import load_dataset
 
 RANDOM_SEED = 42
 INJECTION_RATE = 0.15
+ATTACK_STYLES = [
+    "insistent_suggestion",
+    "misdirection_context",
+    "reverse_psychology",
+]
+_style_counter = 0
 
 
 def mark_deterministic_15pct_injection(items: list[dict], rng: random.Random):
-    """Deterministically marks 15% of tasks in a given stratum for Failure Injection."""
+    """Deterministically marks 15% of tasks in a given stratum and assigns 1/3 attack styles."""
+    global _style_counter
     k = max(1, round(len(items) * INJECTION_RATE))
     chosen_indices = set(rng.sample(range(len(items)), k))
     for idx, item in enumerate(items):
-        item["inject_failure_15pct"] = (idx in chosen_indices)
+        is_injected = (idx in chosen_indices)
+        item["inject_failure_15pct"] = is_injected
+        if is_injected:
+            item["injection_attack_style"] = ATTACK_STYLES[_style_counter % len(ATTACK_STYLES)]
+            _style_counter += 1
+        else:
+            item["injection_attack_style"] = None
 
 
 def extract_function_signature(code: str) -> str:
