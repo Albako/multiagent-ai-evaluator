@@ -105,10 +105,10 @@ def build_coding_30_dataset(rng: random.Random) -> list[dict]:
     easy_list = []
     for r in sampled_easy:
         sig = extract_function_signature(r["code"])
-        func_name = sig.split("(")[0].replace("def ", "").strip()
         imports = r.get("test_imports", [])
-        # Use up to 15 assertions from MBPP+ test_list for fast & thorough verification
         tests_subset = r["test_list"][:15] if isinstance(r.get("test_list"), list) else [r.get("test", "")]
+        unit_tests_str = "\n".join(imports + tests_subset)
+
         easy_list.append({
             "benchmark_source": "MBPP+ (evalplus/mbppplus)",
             "task_id": f"MBPP_{r['task_id']}",
