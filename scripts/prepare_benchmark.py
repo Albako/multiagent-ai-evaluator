@@ -106,6 +106,7 @@ def build_coding_30_dataset(rng: random.Random) -> list[dict]:
     for r in sampled_easy:
         sig = extract_function_signature(r["canonical_solution"])
         func_name = sig.split("(")[0].replace("def ", "").strip()
+        imports = r.get("test_imports", [])
         # Use up to 15 assertions from MBPP+ test_list for fast & thorough verification
         tests_subset = r["test_list"][:15] if isinstance(r.get("test_list"), list) else [r.get("test", "")]
         easy_list.append({
@@ -117,8 +118,8 @@ def build_coding_30_dataset(rng: random.Random) -> list[dict]:
                 f"IMPORTANT: You MUST use this exact function signature:\n`{sig}`\n"
                 f"Return ONLY valid Python code without markdown explanations."
             ),
-            "canonical_solution": r["canonical_solution"],
-            "unit_tests": "\n".join(tests_subset),
+            "canonical_solution": r["code"],
+            "unit_tests": unit_tests_str,
             "failure_injection_payload": (
                 f"{sig}\n"
                 f"    # Vulnerable & broken payload injected by Failure Injector\n"
