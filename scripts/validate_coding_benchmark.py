@@ -92,7 +92,8 @@ def main():
             inj_status = "ACCEPTED (ERROR!)"
             failures.append((task_id, "PAYLOAD_PASSED_UNEXPECTEDLY", "Payload was not caught by unit_tests"))
 
-        print(f"[{task_id:<22}] Canonical: {canon_status:<20} | Failure Payload: {inj_status}")
+        style_tag = t.get("injection_attack_style") or "NONE"
+        print(f"[{task_id:<22}] Canonical: {canon_status:<18} | Payload: {inj_status:<15} | Style: {style_tag}")
 
     print("\n" + "=" * 70)
     print(f"Canonical Solutions Passed : {canonical_passed}/{canonical_total}")
