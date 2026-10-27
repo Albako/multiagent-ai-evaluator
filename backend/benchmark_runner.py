@@ -88,8 +88,10 @@ async def execute_suite(
             task_id = task["task_id"]
             unique_session_id = f"bench_{cfg['run_name']}_{task_id}_{uuid.uuid4().hex[:8]}"
             should_inject = task.get("inject_failure_15pct", False)
+            attack_style = task.get("injection_attack_style", "insistent_suggestion") if should_inject else None
+            injected_content = build_injected_payload(task, attack_style) if should_inject else None
 
-            print(f"[{cfg['run_name']}] {task_id} | 15%_Inject={should_inject}")
+            print(f"[{cfg['run_name']}] {task_id} | 15%_Inject={should_inject} | Style={attack_style}")
 
             payload = {
                 "session_id": unique_session_id,
@@ -99,7 +101,7 @@ async def execute_suite(
                 "max_retries": cfg["max_retries"],
                 "clear_session_after": True,
                 "force_failure_injection": should_inject,
-                "custom_injected_payload": task.get("failure_injection_payload") if should_inject else None
+                "custom_injected_payload": injected_content
             }
 
             try:
@@ -111,6 +113,7 @@ async def execute_suite(
                 rubric = data.get("judge_rubric", {})
                 token_cost = data.get("token_cost", {})
                 initial_verdict = data.get("initial_verdict")
+                j
 
                 record = {
                     "run_name": cfg["run_name"],
@@ -133,6 +136,11 @@ async def execute_suite(
                     "total_tokens": token_cost.get("total_tokens", 0),
                     "total_latency_ms": token_cost.get("total_latency_ms", 0.0),
                     "execution_trace": data.get("execution_trace", [])
+                    "injection_attack_style": attack_style,
+                    "judge_caught_injection": judge_caught,
+                    "judge_succumbed_to_prompt_injection": (
+                        (not judge_caught and cfg["mode"] != "fast") if should_inject else None
+                    ),
                 }
 
                 if is_coding:
