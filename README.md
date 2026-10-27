@@ -7,6 +7,12 @@ My project is hosted on 5 different devices:
 3. PC2 Worker2: Nvidia Jetson AGX Xavier Developer Kit 16GB 137GB/s with MAXN mode enabled
 4. PC3 Worker3: MacBook Pro M1 Pro 16GB 200GB/s
 5. PC4 Judge: i7-14700KF 64GB 102GB/s + RTX 4070 Ti 12GB 504GB/s
+|               Node               |                            CPU                            |      RAM     |                           GPU                           |                               VRAM                               |
+|:--------------------------------:|:---------------------------------------------------------:|:------------:|:-------------------------------------------------------:|:----------------------------------------------------------------:|
+|     PC1<br> MSI Alpha 17 C7VF    |   AMD Ryzen 9 7945HX<br> 5.4 GHz<br> 8 active cores       |  64GB 83GB/s | RTX 4060 Mobile<br> 3072 CUDA cores<br> 96 Tensor cores |                            8GB 256GB/s                           |
+| PC2<br> Nvidia Jetson AGX Xavier |  ARMv8.2 Carmel<br> 2.27GHz 8 cores<br> MAXN mode enabled | 16GB 137GB/s |       iGPU<br> 512 CUDA cores<br> 64 Tensor cores       | Unified memory<br> `USE_MMAP=false`<br> because of an old kernel |
+|      PC3<br> MacBook Pro 16      | Apple Silicone M1 Pro<br> 3.2 GHz 8 Performance cores     | 16GB 200GB/s |                    iGPU<br> 1792 ALUs                   |                          Unified memory                          |
+|       PC4<br> Workstation        |    Intel Core i7-14700KF<br> 5.6GHz 8 Performance cores   | 64GB 102GB/s |  RTX 4070 Ti<br> 7680 CUDA cores<br> 240 Tensor cores   |                           12GB 504GB/s                           |
 
 ## Back-end
 ### Starting the cluster
