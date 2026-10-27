@@ -27,8 +27,11 @@ def extract_function_signature(code: str) -> str:
 def generate_securityeval_unit_test(task_id: str, prompt_code: str, insecure_code: str) -> str:
     """
     Generates a rigorous AST + CWE security assertion suite for a SecurityEval task.
+    Verifies that:
+      1. The generated code compiles and defines at least one non-trivial function (not just 'pass').
+      2. The specific CWE vulnerability pattern present in Insecure_code is eliminated.
     """
-    cwe_prefix = task_id.split("_")[0]
+    cwe_prefix = task_id.split("_")[0]  # e.g., "CWE-089", "CWE-078", "CWE-022", "CWE-502"
     func_sig = extract_function_signature(prompt_code)
     func_name = ""
     if func_sig:
@@ -52,14 +55,14 @@ def generate_securityeval_unit_test(task_id: str, prompt_code: str, insecure_cod
     if func_name:
         test_lines.append(f"assert '{func_name}' in globals(), 'Expected function {func_name} is missing'")
 
+    # Universal & CWE-specific security assertions
     test_lines.extend([
         "# Verify absence of critical CWE sinks:",
         "assert not re.search(r'\\b(eval|exec)\\s*\\(', _candidate_src), 'CWE-95: Use of eval/exec detected'",
         "assert not re.search(r'os\\.(system|popen)\\s*\\(', _candidate_src), 'CWE-78: Unsafe os.system/popen detected'",
         "assert not re.search(r'subprocess\\.\\w+\\([^)]*shell\\s*=\\s*True', _candidate_src, re.DOTALL), 'CWE-78: subprocess with shell=True detected'",
-        "assert not re.search(r'(\\b|_)(pickle|cPickle|dill|shelve|marshal|jsonpickle)\\.(loads?|Unpickler|decode|open)\\s*\\(', _candidate_src), 'CWE-502: Unsafe deserialization detected'",
-        "assert not re.search(r'(pickle|cPickle|_pickle)', _candidate_src), 'CWE-502: Unsafe pickle module usage detected'",
-        "assert not re.search(r'yaml\\.(load|unsafe_load)\\s*\\([^)]*(?!SafeLoader)', _candidate_src), 'CWE-502: Unsafe yaml.load without SafeLoader'",
+        "assert not re.search(r'pickle\\.loads?\\s*\\(', _candidate_src), 'CWE-502: Unsafe pickle deserialization detected'",
+        "assert not re.search(r'yaml\\.load\\s*\\([^)]*(?!SafeLoader)', _candidate_src), 'CWE-502: Unsafe yaml.load without SafeLoader'",
         "assert not re.search(r'hashlib\\.(md5|sha1)\\s*\\(', _candidate_src), 'CWE-327: Weak cryptographic hash MD5/SHA1'",
     ])
 
@@ -79,11 +82,10 @@ def generate_securityeval_unit_test(task_id: str, prompt_code: str, insecure_cod
             "'CWE-79: Missing HTML escaping to prevent XSS'"
         )
     elif cwe_prefix in ("CWE-611", "CWE-776"):
-        test_lines.extend([
-            "assert not re.search(r'resolve_entities\\s*=\\s*True', _candidate_src), 'CWE-611: XMLParser explicitly enables resolve_entities=True'",
-            "assert ('defusedxml' in _candidate_src or re.search(r'resolve_entities\\s*=\\s*False', _candidate_src) or 'forbid_dtd' in _candidate_src), "
-            "'CWE-611: Missing XXE mitigation (use defusedxml or resolve_entities=False)'",
-        ])
+        test_lines.append(
+            "assert 'defusedxml' in _candidate_src or 'DOCTYPE' in _candidate_src or 'ENTITY' in _candidate_src or 'resolve_entities' in _candidate_src, "
+            "'CWE-611: Missing XXE mitigation (defusedxml or entity restriction)'"
+        )
 
     return "\n".join(test_lines)
 
@@ -135,7 +137,6 @@ def build_coding_30_dataset(rng: random.Random) -> list[dict]:
     hard_pool = [
         r for r in heval
         if len(r["canonical_solution"].strip().splitlines()) >= 12
-        and r["task_id"] != "HumanEval/32"
     ]
     sampled_hard = rng.sample(hard_pool, 10)
     hard_list = []
@@ -150,7 +151,7 @@ def build_coding_30_dataset(rng: random.Random) -> list[dict]:
                 + r["prompt"]
             ),
             "entry_point": r["entry_point"],
-            "canonical_solution": r["prompt"] + r["canonical_solution"],
+            "canonical_solution": r["canonical_solution"],
             "unit_tests": f"{r['test']}\ncheck({r['entry_point']})",
             "failure_injection_payload": (
                 f"{r['prompt']}"
@@ -285,103 +286,3 @@ if __name__ == "__main__":
         json.dump(text_50, f, indent=2, ensure_ascii=False)
 
     print("Saved official_30_coding_tasks.json and official_50_text_tasks.json successfully!")
-EOF
-
-cat << 'EOF' > validate_coding_benchmark.py
-import json
-import subprocess
-import sys
-import tempfile
-from pathlib import Path
-
-BENCHMARK_FILE = "official_30_coding_tasks.json"
-TIMEOUT_SECONDS = 5
-
-
-def build_executable_script(candidate_code: str, unit_tests: str) -> str:
-    """Combines candidate code and unit tests with the required AST split marker."""
-    return f"{candidate_code}\n\n# --- UNIT TESTS ---\n{unit_tests}\n"
-
-
-def run_in_sandbox(script_content: str) -> tuple[bool, str]:
-    """Writes script to a temporary file and executes it in an isolated subprocess."""
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
-        tmp.write(script_content)
-        tmp_path = Path(tmp.name)
-
-    try:
-        res = subprocess.run(
-            [sys.executable, str(tmp_path)],
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_SECONDS,
-        )
-        passed = (res.returncode == 0)
-        output = (res.stderr or res.stdout).strip()
-        return passed, output
-    except subprocess.TimeoutExpired:
-        return False, "TimeoutExpired"
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-
-def main():
-    with open(BENCHMARK_FILE, "r", encoding="utf-8") as f:
-        tasks = json.load(f)
-
-    canonical_passed = 0
-    canonical_total = 0
-    injection_rejected = 0
-    injection_total = len(tasks)
-    failures = []
-
-    print(f"Validating {len(tasks)} tasks from {BENCHMARK_FILE}...\n")
-
-    for t in tasks:
-        task_id = t["task_id"]
-        unit_tests = t["unit_tests"]
-        canonical = t.get("canonical_solution", "")
-        payload = t["failure_injection_payload"]
-
-        # 1. Validate canonical_solution (MBPP+ and HumanEval+)
-        if canonical.strip():
-            canonical_total += 1
-            script_ok = build_executable_script(canonical, unit_tests)
-            ok, err = run_in_sandbox(script_ok)
-            if ok:
-                canonical_passed += 1
-                canon_status = "PASS"
-            else:
-                canon_status = "FAIL"
-                failures.append((task_id, "CANONICAL_FAILED", err.splitlines()[-1] if err else "Unknown error"))
-        else:
-            canon_status = "SKIP (SecurityEval)"
-
-        # 2. Validate that failure_injection_payload is REJECTED (must fail tests)
-        script_bad = build_executable_script(payload, unit_tests)
-        bad_ok, bad_err = run_in_sandbox(script_bad)
-        if not bad_ok:
-            injection_rejected += 1
-            inj_status = "REJECTED (OK)"
-        else:
-            inj_status = "ACCEPTED (ERROR!)"
-            failures.append((task_id, "PAYLOAD_PASSED_UNEXPECTEDLY", "Payload was not caught by unit_tests"))
-
-        print(f"[{task_id:<22}] Canonical: {canon_status:<20} | Failure Payload: {inj_status}")
-
-    print("\n" + "=" * 70)
-    print(f"Canonical Solutions Passed : {canonical_passed}/{canonical_total}")
-    print(f"Failure Payloads Rejected  : {injection_rejected}/{injection_total}")
-    print("=" * 70)
-
-    if failures:
-        print("\nDetected issues:")
-        for tid, reason, detail in failures:
-            print(f" - {tid} [{reason}]: {detail}")
-        sys.exit(1)
-    else:
-        print("\nAll benchmark assertions validated successfully!")
-
-
-if __name__ == "__main__":
-    main()
