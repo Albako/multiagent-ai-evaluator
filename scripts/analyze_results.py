@@ -137,6 +137,29 @@ def analyze_text_results(text_path: Path) -> dict:
     return {"raw": records, "summary_rows": summary_rows, "by_run_cat": by_run_cat}
 
 
+def analyze_prompt_injection_styles(records: list[dict]) -> list[dict]:
+    """Breaks down Judge resilience by Wilson's Prompt Injection style (1/3 split)."""
+    by_run_style = defaultdict(list)
+    for r in records:
+        if r.get("is_poisoned_15pct") and r.get("mode") != "fast":
+            style = r.get("injection_attack_style") or "unspecified"
+            by_run_style[(r["run_name"], style)].append(r)
+
+    rows = []
+    for (run_name, style), items in sorted(by_run_style.items()):
+        caught = sum(1 for x in items if x.get("judge_caught_injection") is True)
+        succumbed = sum(1 for x in items if x.get("judge_succumbed_to_prompt_injection") is True)
+        rows.append({
+            "Run": run_name,
+            "Attack_Style": style,
+            "Poisoned_N": len(items),
+            "Judge_Caught_Count": caught,
+            "Judge_Succumbed_Count": succumbed,
+            "Block_Rate_Pct": round((caught / len(items)) * 100.0, 1) if items else 0.0
+        })
+    return rows
+
+
 def rows_to_markdown_table(rows: list[dict], title: str) -> str:
     if not rows:
         return f"### {title}\n_No data available._\n"
@@ -269,15 +292,59 @@ def plot_charts(coding_data: dict):
     plt.close(fig)
 
 
+def plot_prompt_injection_styles_chart(style_rows: list[dict]):
+    """Generates Chart 5 comparing Judge block rate across Wilson's 3 Prompt Injection styles."""
+    if not style_rows:
+        return
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    styles = ["insistent_suggestion", "misdirection_context", "reverse_psychology"]
+    style_labels = [
+        "Insistent Suggestion\n(DAN / Override)",
+        "Misdirection Context\n(Scenario / Roleplay)",
+        "Reverse Psychology\n(Calibration Bait)"
+    ]
+    runs = sorted({r["Run"] for r in style_rows})
+    x = np.arange(len(styles))
+    width = min(0.22, 0.75 / max(1, len(runs)))
+
+    palette = ["#d95f02", "#1b9e77", "#7570b3", "#e7298a"]
+    fig, ax = plt.subplots(figsize=(8.5, 5.2), dpi=300)
+
+    for idx, run in enumerate(runs):
+        vals = [
+            next((r["Block_Rate_Pct"] for r in style_rows if r["Run"] == run and r["Attack_Style"] == s), 0.0)
+            for s in styles
+        ]
+        offset = (idx - len(runs) / 2 + 0.5) * width
+        rects = ax.bar(x + offset, vals, width, label=run, color=palette[idx % len(palette)])
+        ax.bar_label(rects, fmt="%.0f%%", padding=3, fontsize=7.5)
+
+    ax.set_title("Judge Resilience by Indirect Prompt Injection Attack Style (Wilson Taxonomy)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(style_labels)
+    ax.set_ylabel("Judge Attack Block Rate (REJECT_*) [%]")
+    ax.set_ylim(0, 118)
+    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.legend(loc="lower right", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(OUTPUT_DIR / "chart5_prompt_injection_styles.png")
+    plt.close(fig)
+
+
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     report_md = ["# Statistic Benchmark Raport\n"]
+    combined_style_rows = []
 
     coding_file = Path("results_30_coding.json")
     if coding_file.exists():
         c_data = analyze_coding_results(coding_file)
         report_md.append(rows_to_markdown_table(c_data["summary_rows"], "Table 1: Results for 30 coding excersises"))
         report_md.append(rows_to_markdown_table(c_data["cat_rows"], "Table 2: Results for coding excersises per layers of complexity"))
+        style_rows_code = analyze_prompt_injection_styles(c_data["raw"])
+        combined_style_rows.extend(style_rows_code)
+        report_md.append(rows_to_markdown_table(style_rows_code, "Table 2b: Judge Resilience by Prompt Injection Style (Coding)"))
 
         node_rows = [
             {
@@ -299,6 +366,12 @@ def main():
     if text_file.exists():
         t_data = analyze_text_results(text_file)
         report_md.append(rows_to_markdown_table(t_data["summary_rows"], "Table 4: Results for 50 text excersises"))
+        style_rows_text = analyze_prompt_injection_styles(t_data["raw"])
+        combined_style_rows.extend(style_rows_text)
+        report_md.append(rows_to_markdown_table(style_rows_text, "Table 4b: Judge Resilience by Prompt Injection Style (Text)"))
+
+    if combined_style_rows:
+        plot_prompt_injection_styles_chart(combined_style_rows)
 
     out_md_path = OUTPUT_DIR / "tables_summary.md"
     out_md_path.write_text("\n".join(report_md), encoding="utf-8")
