@@ -98,13 +98,13 @@ def build_coding_30_dataset(rng: random.Random) -> list[dict]:
     mbpp = load_dataset("evalplus/mbppplus", split="test")
     easy_pool = [
         r for r in mbpp
-        if 2 <= len(r["canonical_solution"].strip().splitlines()) <= 7
-        and extract_function_signature(r["canonical_solution"])
+        if 2 <= len(r["code"].strip().splitlines()) <= 7
+        and extract_function_signature(r["code"])
     ]
     sampled_easy = rng.sample(easy_pool, 10)
     easy_list = []
     for r in sampled_easy:
-        sig = extract_function_signature(r["canonical_solution"])
+        sig = extract_function_signature(r["code"])
         func_name = sig.split("(")[0].replace("def ", "").strip()
         imports = r.get("test_imports", [])
         # Use up to 15 assertions from MBPP+ test_list for fast & thorough verification
