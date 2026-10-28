@@ -38,7 +38,7 @@ and finally the `PC4` (Judge):
 ```
 
 ## Testing
-#### Testing if a `llm-model.gguf` can be loaded on individual nodes:
+#### Testing if a `<llm-model>.gguf` can be loaded on individual nodes:
 PC1:
 ```bash
 docker exec -it model_manager_pc1 python3 -c "
