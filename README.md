@@ -14,23 +14,23 @@ My project is hosted on 5 different devices:
 ### Starting the cluster
 Make sure to edit the IP adresses in the `.env` file (`.env` will create itself from `.env.example` after running the `./start.sh pcX`/`./start_mac.sh` script).
 
-In order to start the cluster use this command in the API host:
+In order to start the cluster use this command in the `PC0` API host:
 ```bash
 ./start.sh pc0
 ```
-and in the R9+4060 x86 (Worker1):
+and in the `PC1` (Worker1):
 ```bash
 ./start.sh pc1
 ```
-and in the Nvidia Jeston AGX Xavier arm64 (Worker2):
+and in the `PC2` (Worker2):
 ```bash
 ./start.sh pc2
 ```
-and in the MacBook arm64 (Worker3) - MacBook has a seperate script because it doesn't use Docker, because Docker can't use Apple Silicone GPU:
+and in the `PC3` (Worker3) - MacBook has a seperate script because it doesn't use Docker, because Docker can't use Apple Silicone GPU:
 ```bash
 ./start_mac.sh
 ```
-and finally the i7+4070Ti x86 (Judge):
+and finally the `PC4` (Judge):
 ```bash
 ./start.sh pc4
 ```
