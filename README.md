@@ -10,6 +10,8 @@ My project is hosted on 5 different devices:
 |      PC3<br> MacBook Pro 16      | Apple Silicone M1 Pro<br> 3.2 GHz<br> 8 Performance cores     | 16GB 200GB/s |                    iGPU<br> 1792 ALUs                   |                          Unified memory                          |
 |       PC4<br> Workstation        |    Intel Core i7-14700KF<br> 5.6GHz<br> 8 Performance cores   | 64GB 102GB/s |Nvidia RTX 4070 Ti<br> 7680 CUDA cores<br> 240 Tensor cores|                           12GB 504GB/s                           |
 
+PC1, PC3 and PC4 uses only 8 CPU cores for efficiency reasons.
+
 ## Back-end
 ### Starting the cluster
 Make sure to edit the IP adresses in the `.env` file (`.env` will create itself from `.env.example` after running the `./start.sh pcX`/`./start_mac.sh` script).
