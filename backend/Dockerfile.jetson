@@ -13,9 +13,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++-aarch64-linux-gnu \
     cmake \
     curl \
+    wget \
+    ca-certificates \
+    && cd /tmp \
+    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/arm64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && rm -f cuda-keyring_1.1-1_all.deb \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    cuda-toolkit-12-2 \
+    && apt-get download cuda-compat-12-2 \
+    && dpkg-deb -x cuda-compat-12-2*.deb / \
+    && rm -f cuda-compat-12-2*.deb \
+    && ln -sfn /usr/local/cuda-12.2 /usr/local/cuda \
+    && ldconfig \
     && rm -rf /var/lib/apt/lists/*
 
-# forcing compilation of the llama.cpp library for CUDA cores
+ENV CUDA_HOME="/usr/local/cuda-12.2"
+ENV CUDAToolkit_ROOT="/usr/local/cuda-12.2"
+ENV PATH="/usr/local/cuda-12.2/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda-12.2/compat:/usr/local/cuda-12.2/lib64:${LD_LIBRARY_PATH}"
+
+# forcing compilation of the llama.cpp library for Volta architecture (SM 72)
 ENV CMAKE_ARGS="-DGGML_CUDA=on -DGGML_CUDA_FA_ALL_QUANTS=ON -DGGML_CUDA_NO_VMM=ON -DCMAKE_CUDA_ARCHITECTURES=72 -DCMAKE_BUILD_TYPE=Release"
 ENV FORCE_CMAKE=1
 
