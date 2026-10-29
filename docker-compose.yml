@@ -36,7 +36,7 @@ services:
       - "8001:8001"
     volumes:
       - ./models:/models:z
-    cpuset: "0,2,4,6,8,10,12,14"
+    cpuset: "0,1,2,3,4,5,6,7"
     env_file:
       - .env
     environment:
