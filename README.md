@@ -10,7 +10,7 @@ My project is hosted on 5 different devices:
 |       PC3<br> MacBook Pro 16<br> OS: MacOS 27.2            |      Apple Silicone M1 Pro<br> 3.2 GHz<br> 8 P-cores      | 16GB 200GB/s |    iGPU<br> 2048 ALU<br> 10,6 TFLOPS (FP16)                   |                        Unified memory                        |
 |  PC4<br> Workstation<br> OS: Fedora 44<br> Kernel: 7.2     |        Intel Core i7-14700KF<br> 5.6GHz<br> 8 P-cores     | 64GB 102GB/s |Nvidia RTX 4070 Ti<br> 7680 CUDA cores<br> 240 Tensor cores<br> 160 TFLOPS (FP16 Tensor)|                          12GB 504GB/s                       |
 
-PC1, PC3 and PC4 uses only 8 CPU cores for efficiency reasons.
+PC1, PC3 and PC4 uses only 8 CPU cores for maximum performance reasons.
 
 ## Back-end
 ### Starting the cluster
