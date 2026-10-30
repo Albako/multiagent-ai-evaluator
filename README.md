@@ -7,7 +7,7 @@ My project is hosted on 5 different devices:
 | PC0<br> Serves as an API<br> OS: Debian 13<br> Kernel: 7.0 |                  Intel Core i5-13500TE<br>                |  32GB 43GB/s |           It yet doesn't have a dedicated GPU                 |                               -                             |
 |PC1<br> MSI Alpha 17 C7VF<br> OS: Fedora 44<br> Kernel: 7.2 |  AMD Ryzen 9 7945HX<br> 5.4 GHz<br> 8 out of 16 cores     |  64GB 83GB/s |Nvidia RTX 4060 Mobile<br> 3072 CUDA cores<br> 96 Tensor cores<br>|                            8GB 256GB/s                      |
 |PC2<br> Nvidia Jetson AGX Xavier<br> Developer Kit<br> OS: Ubuntu 20 L4T<br> Kernel: 5.10-tegra|ARMv8.2 Carmel<br> 2.27GHz<br> 8 cores<br> MAXN mode enabled | 16GB 137GB/s |iGPU<br> 512 CUDA cores<br> 64 Tensor cores<br>|Unified memory<br> `USE_MMAP=false`<br> because of an old kernel|
-|       PC3<br> MacBook Pro 16<br> OS: MacOS 27.2            |      Apple Silicone M1 Pro<br> 3.2 GHz<br> 8 P-cores      | 16GB 200GB/s |    iGPU<br> 2048 ALU<br> 10,6 TFLOPS (FP16)                   |                        Unified memory                        |
+|       PC3<br> MacBook Pro 16<br> OS: MacOS 27.2            |      Apple Silicone M1 Pro<br> 3.2 GHz<br> 8 P-cores      | 16GB 200GB/s |                       iGPU<br> 2048 ALU<br>                   |                        Unified memory                        |
 |  PC4<br> Workstation<br> OS: Fedora 44<br> Kernel: 7.2     |        Intel Core i7-14700KF<br> 5.6GHz<br> 8 P-cores     | 64GB 102GB/s |Nvidia RTX 4070 Ti<br> 7680 CUDA cores<br> 240 Tensor cores<br>|                          12GB 504GB/s                       |
 
 PC1, PC3 and PC4 uses only 8 CPU cores for maximum performance reasons.
