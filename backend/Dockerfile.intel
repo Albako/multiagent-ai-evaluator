@@ -1,13 +1,15 @@
-FROM nvidia/cuda:13.2.0-devel-ubuntu24.04
+# ==========================================
+# Stage 1: Builder (CUDA devel + compiler)
+# ==========================================
+FROM nvidia/cuda:13.2.0-devel-ubuntu24.04 AS builder
 
-# set python to not to write .pyc files
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /build
 
-# install basic system dependencies required for potential runtime operations
+# Install build toolchain and Python 3.11 development headers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     build-essential \
@@ -19,22 +21,53 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-dev \
     python3.11-venv \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+# Create an isolated virtual environment
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy only requirements first to leverage Docker layer caching
 COPY requirements.manager.txt .
 
-# Turning off AVX-512 instruction for Intel CPUs + targeting Ada Lovelace (89)
+# Disable AVX-512 for Intel CPUs and target Ada Lovelace architecture (SM 89)
 ENV CMAKE_ARGS="-DGGML_CUDA=on -DGGML_AVX512=off -DCMAKE_CUDA_ARCHITECTURES=89"
 ENV FORCE_CMAKE=1
 
-# Install dependencies
-RUN python3.11 -m pip install --no-cache-dir --upgrade pip && \
-    python3.11 -m pip install --no-cache-dir -r requirements.manager.txt && \
-    python3.11 -m pip install --no-cache-dir --upgrade --force-reinstall --no-binary llama-cpp-python llama-cpp-python
+# Link CUDA driver stubs so ggml-cuda VMM compiles without an active GPU during build
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH}"
+
+# Upgrade pip and compile dependencies directly into /opt/venv
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.manager.txt && \
+    pip install --no-cache-dir --upgrade --force-reinstall --no-binary llama-cpp-python llama-cpp-python
+
+
+# ==========================================
+# Stage 2: Runtime (Lightweight production)
+# ==========================================
+FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install only strictly required runtime packages (OpenMP and Python 3.11 base)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    python3.11 \
+    && apt-get purge -y --auto-remove software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the compiled virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 COPY manager.py .
 
