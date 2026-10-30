@@ -1,15 +1,19 @@
-FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04
+# ==========================================
+# Stage 1: Builder (CUDA devel + compiler)
+# ==========================================
+FROM nvidia/cuda:13.2.0-devel-ubuntu24.04 AS builder
 
-# set python to not to write .pyc files
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /build
 
-# install basic system dependencies required for potential runtime operations
+# Install build toolchain and Python 3.11 development headers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
+    build-essential \
+    cmake \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -17,18 +21,53 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-dev \
     python3.11-venv \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+# Create an isolated virtual environment
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy only requirements first to leverage Docker layer caching
 COPY requirements.manager.txt .
 
-# Install dependencies with pre-built cu132 wheel
-RUN python3.11 -m pip install --no-cache-dir --upgrade pip && \
-    python3.11 -m pip install --no-cache-dir -r requirements.manager.txt \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu132
+# Target AMD Zen 4 (R9 7945HX) full AVX-512 instruction set and Ada Lovelace (RTX 4060 - SM 89)
+ENV CMAKE_ARGS="-DGGML_CUDA=on -DGGML_NATIVE=off -DGGML_AVX2=on -DGGML_FMA=on -DGGML_F16C=on -DGGML_AVX512=on -DGGML_AVX512_VBMI=on -DGGML_AVX512_VNNI=on -DGGML_AVX512_BF16=on -DCMAKE_CUDA_ARCHITECTURES=89"
+ENV FORCE_CMAKE=1
+
+# Link CUDA driver stubs so ggml-cuda VMM compiles without an active GPU during build
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH}"
+
+# Upgrade pip and compile dependencies from source into /opt/venv
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.manager.txt && \
+    pip install --no-cache-dir --upgrade --force-reinstall --no-binary llama-cpp-python llama-cpp-python
+
+
+# ==========================================
+# Stage 2: Runtime (Lightweight production)
+# ==========================================
+FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install strictly required runtime packages (OpenMP and Python 3.11 base)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    python3.11 \
+    && apt-get purge -y --auto-remove software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the compiled virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 COPY manager.py .
 
