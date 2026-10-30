@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04
 
 # set python to not to write .pyc files
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,8 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     python3.11 \
     python3.11-dev \
-    python3-pip \
-    python3-venv \
+    python3.11-venv \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,10 +25,10 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
 # Copy only requirements first to leverage Docker layer caching
 COPY requirements.manager.txt .
 
-# Install dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.manager.txt \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+# Install dependencies with pre-built cu132 wheel
+RUN python3.11 -m pip install --no-cache-dir --upgrade pip && \
+    python3.11 -m pip install --no-cache-dir -r requirements.manager.txt \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu132
 
 COPY manager.py .
 
