@@ -70,9 +70,7 @@ def _get_process_rss_mb() -> float:
     """Returns peak resident set size (RSS) in MB, handling Linux vs macOS unit differences."""
     usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     if sys.platform == "darwin":
-        # macOS returns ru_maxrss in bytes
         return round(usage / (1024 * 1024), 2)
-    # Linux returns ru_maxrss in kilobytes
     return round(usage / 1024, 2)
 
 
@@ -133,7 +131,6 @@ def load_model(request: LoadModelRequest):
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail=f"Model not found at {model_path}")
 
-    # Resolve KV cache types (request overrides ENV, ENV defaults to q8_0)
     req_k_str = (request.type_k or KV_CACHE_TYPE_K).lower()
     req_v_str = (request.type_v or KV_CACHE_TYPE_V).lower()
 
@@ -143,7 +140,6 @@ def load_model(request: LoadModelRequest):
             detail=f"Invalid KV cache type. Allowed values: {list(KV_TYPE_MAP.keys())}"
         )
 
-    # Guard: llama.cpp requires flash_attn=True when V-cache is quantized
     if not FLASH_ATTN and req_v_str != "f16":
         print(
             f"WARNING: Quantized V-cache ({req_v_str}) requires FLASH_ATTN=true. Falling back type_v to f16.",
@@ -163,7 +159,6 @@ def load_model(request: LoadModelRequest):
         _unload_worker_model(request.worker_id)
 
         try:
-            # Apply OVERRIDE_GPU_LAYERS if set to non-zero (supports -1 for full offload)
             if OVERRIDE_GPU_LAYERS is not None and OVERRIDE_GPU_LAYERS != 0:
                 safe_gpu_layers = OVERRIDE_GPU_LAYERS
             else:
@@ -182,4 +177,118 @@ def load_model(request: LoadModelRequest):
 
             load_start = time.monotonic()
             llm = Llama(
-            
+                model_path=model_path,
+                n_gpu_layers=safe_gpu_layers,
+                n_ctx=final_n_ctx,
+                n_batch=N_BATCH,
+                n_threads=LLAMA_THREADS,
+                n_threads_batch=LLAMA_THREADS_BATCH,
+                use_mmap=USE_MMAP,
+                flash_attn=FLASH_ATTN,
+                type_k=ggml_type_k,
+                type_v=ggml_type_v,
+                verbose=True
+            )
+            load_duration_s = round(time.monotonic() - load_start, 2)
+
+            with registry_lock:
+                active_models[request.worker_id] = llm
+                active_model_metadata[request.worker_id] = {
+                    "model_name": request.model_name,
+                    "model_path": model_path,
+                    "model_file_size_mb": model_size_mb,
+                    "n_gpu_layers": safe_gpu_layers,
+                    "n_ctx": final_n_ctx,
+                    "n_batch": N_BATCH,
+                    "flash_attn": FLASH_ATTN,
+                    "kv_cache": {
+                        "type_k": req_k_str,
+                        "type_v": req_v_str,
+                    },
+                    "load_duration_seconds": load_duration_s,
+                    "loaded_at_unix": int(time.time()),
+                }
+
+            return {
+                "status": "success",
+                "message": f"Successfully loaded {request.model_name} for {request.worker_id} in {load_duration_s}s (KV: {req_k_str}/{req_v_str})"
+            }
+        except Exception as e:
+            error_msg = f"Failed to load model: {str(e)}"
+            print(error_msg, flush=True)
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=error_msg)
+
+
+@app.post("/api/v1/{worker_id}/generate")
+def generate_text(worker_id: str, request: GenerateRequest):
+    if worker_id not in active_models:
+        raise HTTPException(status_code=400, detail=f"No active model loaded for worker ID: {worker_id}")
+
+    llm = active_models[worker_id]
+    lock = model_locks[worker_id]
+
+    messages = []
+    if request.system_prompt:
+        messages.append({"role": "system", "content": request.system_prompt})
+    messages.append({"role": "user", "content": request.prompt})
+
+    response_format = None
+    effective_repeat_penalty = 1.15
+    if request.json_schema:
+        response_format = {
+            "type": "json_object",
+            "schema": request.json_schema
+        }
+        effective_repeat_penalty = 1.02
+
+    try:
+        start_time = time.monotonic()
+        with lock:
+            response = llm.create_chat_completion(
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                repeat_penalty=effective_repeat_penalty,
+                response_format=response_format
+            )
+        elapsed_time = time.monotonic() - start_time
+
+        usage = response.get("usage", {})
+        p_tokens = usage.get("prompt_tokens", 0)
+        c_tokens = usage.get("completion_tokens", 0)
+        finish_reason = response["choices"][0].get("finish_reason", "stop")
+
+        tokens_per_sec = round(c_tokens / elapsed_time, 2) if elapsed_time > 0 and c_tokens > 0 else 0.0
+
+        return {
+            "worker_id": worker_id,
+            "generated_text": response["choices"][0]["message"]["content"].strip(),
+            "prompt_tokens": p_tokens,
+            "completion_tokens": c_tokens,
+            "total_tokens": p_tokens + c_tokens,
+            "generation_time_seconds": round(elapsed_time, 3),
+            "tokens_per_second": tokens_per_sec,
+            "finish_reason": finish_reason
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
+
+
+@app.post("/api/v1/system/clear_all")
+def clear_all_models():
+    with registry_lock:
+        worker_ids = list(active_models.keys())
+        for wid in worker_ids:
+            lock = model_locks.get(wid)
+            if lock:
+                with lock:
+                    _unload_worker_model(wid)
+            else:
+                _unload_worker_model(wid)
+        model_locks.clear()
+        active_model_metadata.clear()
+        gc.collect()
+
+    return {"status": "success", "message": "All models have been unloaded from RAM/VRAM."}
+    
