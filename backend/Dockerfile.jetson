@@ -1,26 +1,33 @@
-FROM dustynv/l4t-text-generation:r35.2.1
+# ==========================================
+# Stage 1: Builder (L4T base + CUDA 12.2 Toolkit)
+# ==========================================
+FROM nvcr.io/nvidia/l4t-base:r35.4.1 AS builder
 
-# set python to not to write .pyc files
+ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /build
 
-# install basic system dependencies required for potential runtime operations
+# Install build tools, Python 3.11 (via deadsnakes for parity with x86 nodes), and CUDA 12.2 toolkit
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
     build-essential \
-    gcc-aarch64-linux-gnu \
-    g++-aarch64-linux-gnu \
     cmake \
     curl \
     wget \
     ca-certificates \
+    && add-apt-repository ppa:deadsnakes/ppa \
     && cd /tmp \
     && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/arm64/cuda-keyring_1.1-1_all.deb \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
     && rm -f cuda-keyring_1.1-1_all.deb \
     && apt-get update && apt-get install -y --no-install-recommends \
     cuda-toolkit-12-2 \
+    libgomp1 \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
     && apt-get download cuda-compat-12-2 \
     && dpkg-deb -x cuda-compat-12-2*.deb / \
     && rm -f cuda-compat-12-2*.deb \
@@ -31,19 +38,68 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV CUDA_HOME="/usr/local/cuda-12.2"
 ENV CUDAToolkit_ROOT="/usr/local/cuda-12.2"
 ENV PATH="/usr/local/cuda-12.2/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/cuda-12.2/compat:/usr/local/cuda-12.2/lib64:${LD_LIBRARY_PATH}"
 
-# forcing compilation of the llama.cpp library for Volta architecture (SM 72)
+# Link CUDA stubs for build-time linking without active GPU access
+RUN ln -s /usr/local/cuda-12.2/lib64/stubs/libcuda.so /usr/local/cuda-12.2/lib64/stubs/libcuda.so.1
+ENV LD_LIBRARY_PATH="/usr/local/cuda-12.2/compat:/usr/local/cuda-12.2/lib64:/usr/local/cuda-12.2/lib64/stubs:${LD_LIBRARY_PATH}"
+
+# Create isolated virtual environment
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.manager.txt .
+
+# Limit parallel nvcc jobs to 4 to keep RAM usage well below 16GB during FA_ALL_QUANTS compilation
+ENV CMAKE_BUILD_PARALLEL_LEVEL=4
+
+# Target Volta architecture (SM 72) and ARMv8.2-A FP16/dotprod instructions of Carmel CPU
 ENV CMAKE_ARGS="-DGGML_CUDA=on -DGGML_CUDA_FA_ALL_QUANTS=ON -DGGML_CUDA_NO_VMM=ON -DCMAKE_CUDA_ARCHITECTURES=72 -DCMAKE_BUILD_TYPE=Release"
 ENV FORCE_CMAKE=1
 
-# Copy only requirements first to leverage Docker layer caching
-COPY requirements.manager.txt .
-
-# Install dependencies and force compilation of the newest llama-cpp-python from source
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.manager.txt && \
     pip install --no-cache-dir --upgrade --force-reinstall --no-binary llama-cpp-python llama-cpp-python
+
+
+# ==========================================
+# Stage 2: Runtime (Lightweight L4T + CUDA 12.2 Runtime only)
+# ==========================================
+FROM nvcr.io/nvidia/l4t-base:r35.4.1 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install only CUDA 12.2 runtime libraries (cublas + cudart + compat) instead of the full 4GB toolkit
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    wget \
+    ca-certificates \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && cd /tmp \
+    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/arm64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && rm -f cuda-keyring_1.1-1_all.deb \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    cuda-cudart-12-2 \
+    libcublas-12-2 \
+    libgomp1 \
+    python3.11 \
+    && apt-get download cuda-compat-12-2 \
+    && dpkg-deb -x cuda-compat-12-2*.deb / \
+    && rm -f cuda-compat-12-2*.deb \
+    && apt-get purge -y --auto-remove software-properties-common wget \
+    && ln -sfn /usr/local/cuda-12.2 /usr/local/cuda \
+    && ldconfig \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/opt/venv/bin:/usr/local/cuda-12.2/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/cuda-12.2/compat:/usr/local/cuda-12.2/lib64:${LD_LIBRARY_PATH}"
+
+# Copy compiled venv from builder
+COPY --from=builder /opt/venv /opt/venv
 
 COPY manager.py .
 
