@@ -1,5 +1,8 @@
 import os
+import sys
 import gc
+import time
+import resource
 import traceback
 import threading
 from typing import Optional, Dict, Any
@@ -14,6 +17,7 @@ app = FastAPI(title="Dynamic Model Manager")
 # Key is worker_id (worker1 or judge)
 # Value is instantiated Llama object
 active_models: Dict[str, Llama] = {}
+active_model_metadata: Dict[str, Dict[str, Any]] = {}
 model_locks: Dict[str, threading.Lock] = {}
 registry_lock = threading.Lock()
 
@@ -30,6 +34,7 @@ KV_TYPE_MAP: Dict[str, int] = {
 }
 
 # Hardware & runtime configuration from environment variables
+NODE_ROLE = os.getenv("NODE_ROLE", "worker")
 LLAMA_THREADS = int(os.getenv("LLAMA_THREADS", 8))
 LLAMA_THREADS_BATCH = int(os.getenv("LLAMA_THREADS_BATCH", 8))
 N_BATCH = int(os.getenv("N_BATCH", 512))
@@ -61,8 +66,19 @@ class GenerateRequest(BaseModel):
     json_schema: Optional[Dict[str, Any]] = None  # Triggers GBNF grammar enforcement in llama.cpp
 
 
+def _get_process_rss_mb() -> float:
+    """Returns peak resident set size (RSS) in MB, handling Linux vs macOS unit differences."""
+    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        # macOS returns ru_maxrss in bytes
+        return round(usage / (1024 * 1024), 2)
+    # Linux returns ru_maxrss in kilobytes
+    return round(usage / 1024, 2)
+
+
 def _unload_worker_model(worker_id: str) -> None:
     """Safely closes and frees a loaded Llama instance from RAM/VRAM."""
+    active_model_metadata.pop(worker_id, None)
     if worker_id in active_models:
         print(f"Unloading existing model for {worker_id}...", flush=True)
         llm = active_models.pop(worker_id)
@@ -73,6 +89,40 @@ def _unload_worker_model(worker_id: str) -> None:
             print(f"Warning during llm.close() for {worker_id}: {e}", flush=True)
         del llm
         gc.collect()
+
+
+@app.get("/health")
+@app.get("/api/v1/system/status")
+def get_system_status():
+    """Returns node configuration, active workers, loaded models, and KV cache settings."""
+    workers_status: Dict[str, Any] = {}
+    with registry_lock:
+        for wid, meta in active_model_metadata.items():
+            lock = model_locks.get(wid)
+            workers_status[wid] = {
+                **meta,
+                "is_generating": lock.locked() if lock else False,
+            }
+
+    return {
+        "status": "online",
+        "node_role": NODE_ROLE,
+        "gpu_offload_supported": bool(llama_cpp.llama_supports_gpu_offload()),
+        "process_peak_rss_mb": _get_process_rss_mb(),
+        "default_config": {
+            "threads": LLAMA_THREADS,
+            "threads_batch": LLAMA_THREADS_BATCH,
+            "n_batch": N_BATCH,
+            "use_mmap": USE_MMAP,
+            "flash_attn": FLASH_ATTN,
+            "kv_cache_type_k": KV_CACHE_TYPE_K,
+            "kv_cache_type_v": KV_CACHE_TYPE_V,
+            "override_gpu_layers": OVERRIDE_GPU_LAYERS,
+            "override_n_ctx": OVERRIDE_N_CTX,
+        },
+        "active_workers_count": len(workers_status),
+        "active_workers": workers_status,
+    }
 
 
 @app.post("/api/v1/system/load_model")
@@ -120,8 +170,9 @@ def load_model(request: LoadModelRequest):
                 safe_gpu_layers = request.n_gpu_layers
 
             final_n_ctx = OVERRIDE_N_CTX if OVERRIDE_N_CTX > 0 else request.n_ctx
+            model_size_mb = round(os.path.getsize(model_path) / (1024 * 1024), 2)
 
-            print(f"Loading {request.model_name} for {request.worker_id} into VRAM...", flush=True)
+            print(f"Loading {request.model_name} ({model_size_mb} MB) for {request.worker_id} into VRAM...", flush=True)
             print(
                 f"Hardware Config -> mmap:{USE_MMAP}, flash_attn:{FLASH_ATTN}, "
                 f"kv_cache:{req_k_str}/{req_v_str}, batch:{N_BATCH}, "
@@ -129,95 +180,6 @@ def load_model(request: LoadModelRequest):
                 flush=True
             )
 
+            load_start = time.monotonic()
             llm = Llama(
-                model_path=model_path,
-                n_gpu_layers=safe_gpu_layers,
-                n_ctx=final_n_ctx,
-                n_batch=N_BATCH,
-                n_threads=LLAMA_THREADS,
-                n_threads_batch=LLAMA_THREADS_BATCH,
-                use_mmap=USE_MMAP,
-                flash_attn=FLASH_ATTN,
-                type_k=ggml_type_k,
-                type_v=ggml_type_v,
-                verbose=True
-            )
-            active_models[request.worker_id] = llm
-
-            return {
-                "status": "success",
-                "message": f"Successfully loaded {request.model_name} for {request.worker_id} (KV: {req_k_str}/{req_v_str})"
-            }
-        except Exception as e:
-            error_msg = f"Failed to load model: {str(e)}"
-            print(error_msg, flush=True)
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=error_msg)
-
-
-@app.post("/api/v1/{worker_id}/generate")
-def generate_text(worker_id: str, request: GenerateRequest):
-    if worker_id not in active_models:
-        raise HTTPException(status_code=400, detail=f"No active model loaded for worker ID: {worker_id}")
-
-    llm = active_models[worker_id]
-    lock = model_locks[worker_id]
-
-    messages = []
-    if request.system_prompt:
-        messages.append({"role": "system", "content": request.system_prompt})
-    messages.append({"role": "user", "content": request.prompt})
-
-    # Configure GBNF structured output if json_schema is provided
-    response_format = None
-    effective_repeat_penalty = 1.15
-    if request.json_schema:
-        response_format = {
-            "type": "json_object",
-            "schema": request.json_schema
-        }
-        effective_repeat_penalty = 1.02
-
-    try:
-        with lock:
-            response = llm.create_chat_completion(
-                messages=messages,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-                repeat_penalty=effective_repeat_penalty,
-                response_format=response_format
-            )
-
-        usage = response.get("usage", {})
-        p_tokens = usage.get("prompt_tokens", 0)
-        c_tokens = usage.get("completion_tokens", 0)
-        finish_reason = response["choices"][0].get("finish_reason", "stop")
-
-        return {
-            "worker_id": worker_id,
-            "generated_text": response["choices"][0]["message"]["content"].strip(),
-            "prompt_tokens": p_tokens,
-            "completion_tokens": c_tokens,
-            "total_tokens": p_tokens + c_tokens,
-            "finish_reason": finish_reason
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
-
-
-@app.post("/api/v1/system/clear_all")
-def clear_all_models():
-    with registry_lock:
-        worker_ids = list(active_models.keys())
-        for wid in worker_ids:
-            lock = model_locks.get(wid)
-            if lock:
-                with lock:
-                    _unload_worker_model(wid)
-            else:
-                _unload_worker_model(wid)
-        model_locks.clear()
-        gc.collect()
-
-    return {"status": "success", "message": "All models have been unloaded from RAM/VRAM."}
-    
+            
