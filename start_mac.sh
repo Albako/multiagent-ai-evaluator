@@ -64,7 +64,7 @@ fi
 # 7. Ensure local models directory exists
 mkdir -p "$MODELS_DIR"
 
-# 8. Export runtime configuration for M1 Pro (6 Performance cores)
+# 8. Export runtime configuration for M1 Pro (8 Performance cores)
 export MODELS_DIR="$MODELS_DIR"
 export MANAGER_PORT=8003
 export NODE_ROLE="worker3"
