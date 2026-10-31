@@ -1,7 +1,7 @@
 # ==========================================
 # Stage 1: Builder (L4T base + CUDA 12.2 Toolkit)
 # ==========================================
-FROM nvcr.io/nvidia/l4t-base:r35.3.1 AS builder
+FROM nvcr.io/nvidia/l4t-base:r35.2.1 AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
@@ -64,7 +64,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ==========================================
 # Stage 2: Runtime (Lightweight L4T + CUDA 12.2 Runtime only)
 # ==========================================
-FROM nvcr.io/nvidia/l4t-base:r35.3.1 AS runtime
+FROM nvcr.io/nvidia/l4t-base:r35.2.1 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
