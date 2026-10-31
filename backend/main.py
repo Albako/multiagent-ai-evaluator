@@ -219,7 +219,7 @@ async def initialize_mode(request: InitModeRequest):
 
         # Load all 4 models concurrently across PC1, PC2, PC3, and PC4
         await asyncio.gather(
-            load_model_on_manager(PC1_MANAGER_URL, "worker1", worker1_model, n_gpu_layers=55),
+            load_model_on_manager(PC1_MANAGER_URL, "worker1", worker1_model, n_gpu_layers=40),
             load_model_on_manager(PC2_MANAGER_URL, "worker2", worker2_model, n_gpu_layers=-1),
             load_model_on_manager(PC3_MANAGER_URL, "worker3", worker3_model, n_gpu_layers=-1),
             load_model_on_manager(PC4_MANAGER_URL, "judge", judge_model, n_gpu_layers=10)

@@ -7,12 +7,13 @@ BACKEND_DIR="$PROJECT_ROOT/backend"
 MODELS_DIR="$PROJECT_ROOT/models"
 VENV_DIR="$PROJECT_ROOT/.venv_mac"
 
-echo "=== [PC3] Initializing Worker 3 ==="
+echo "=== [PC3] Initializing Worker 3 (Apple Silicon M1 Pro) ==="
 
 # 1. Verify Apple Silicon architecture
 ARCH="$(uname -m)"
 if [ "$ARCH" != "arm64" ]; then
-    echo "WARNING: Running under $ARCH architecture. Make sure your terminal runs natively in arm64!"
+    echo "ERROR: Running under $ARCH (Rosetta 2). Please run terminal natively in arm64!"
+    exit 1
 fi
 
 # 2. Check for Xcode Command Line Tools (Clang compiler required for Metal shaders)
@@ -46,16 +47,23 @@ pip install --upgrade pip wheel setuptools --quiet
 
 # 5. Install FastAPI & Manager dependencies
 echo "Checking Python API dependencies..."
-pip install fastapi uvicorn pydantic httpx python-dotenv --quiet
+if [ -f "$BACKEND_DIR/requirements.manager.txt" ]; then
+    pip install -r "$BACKEND_DIR/requirements.manager.txt" --quiet
+elif [ -f "$PROJECT_ROOT/requirements.manager.txt" ]; then
+    pip install -r "$PROJECT_ROOT/requirements.manager.txt" --quiet
+else
+    pip install fastapi uvicorn pydantic httpx python-dotenv --quiet
+fi
 
 # 6. Check if llama-cpp-python is installed WITH Apple Metal GPU support
 echo "Verifying llama.cpp and Apple Metal acceleration..."
 if ! python3 -c "import llama_cpp; assert llama_cpp.llama_supports_gpu_offload(), 'Metal offload disabled'" &>/dev/null; then
     echo "llama-cpp-python is missing or built without Metal support."
-    echo "Downloading and compiling llama.cpp with GGML_METAL=on (this takes 1-2 minutes)..."
-    CMAKE_ARGS="-DGGML_METAL=on -DGGML_METAL_EMBED_LIBRARY=on" \
+    echo "Compiling llama.cpp from source with Metal & Apple Accelerate (this takes 1-2 minutes)..."
+    CMAKE_BUILD_PARALLEL_LEVEL=8 \
+    CMAKE_ARGS="-DGGML_METAL=on -DGGML_METAL_EMBED_LIBRARY=on -DGGML_ACCELERATE=on -DGGML_NATIVE=on -DCMAKE_BUILD_TYPE=Release" \
     FORCE_CMAKE=1 \
-    pip install --upgrade --force-reinstall --no-cache-dir llama-cpp-python
+    pip install --upgrade --force-reinstall --no-cache-dir --no-binary llama-cpp-python llama-cpp-python
     echo "llama-cpp-python successfully built with Apple Metal!"
 else
     echo "llama-cpp-python with Apple Metal support is already installed."
@@ -64,7 +72,7 @@ fi
 # 7. Ensure local models directory exists
 mkdir -p "$MODELS_DIR"
 
-# 8. Export runtime configuration for M1 Pro (6 Performance cores)
+# 8. Export runtime configuration for M1 Pro (8 Performance cores, 16-core GPU)
 export MODELS_DIR="$MODELS_DIR"
 export MANAGER_PORT=8003
 export NODE_ROLE="worker3"
@@ -76,14 +84,20 @@ export FLASH_ATTN="true"
 export OVERRIDE_GPU_LAYERS=-1
 export OVERRIDE_N_CTX=8192
 
+# Check macOS Metal wired memory limit (0 means default ~66-70% of 16GB RAM)
+WIRED_LIMIT=$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo "default")
+
 # Detect local LAN IP for convenience
 LAN_IP=$(ipconfig getifaddr en0 || ipconfig getifaddr en1 || echo "localhost")
 
 echo "=========================================================="
 echo "Starting Worker 3 on http://0.0.0.0:$MANAGER_PORT"
-echo "Local Models Dir : $MODELS_DIR"
-echo "LAN URL for .env : PC3_MANAGER_URL=http://$LAN_IP:$MANAGER_PORT"
+echo "Local Models Dir   : $MODELS_DIR"
+echo "Metal Wired Limit  : ${WIRED_LIMIT} MB (Tip: sudo sysctl iogpu.wired_limit_mb=13312 for ~13GB VRAM)"
+echo "LAN URL for .env   : PC3_MANAGER_URL=http://$LAN_IP:$MANAGER_PORT"
+echo "Power Management   : caffeinate active (preventing sleep/App Nap)"
 echo "=========================================================="
 
 cd "$BACKEND_DIR"
-exec uvicorn manager:app --host 0.0.0.0 --port "$MANAGER_PORT"
+# Run uvicorn wrapped in caffeinate to prevent macOS from sleeping or throttling during benchmarks
+exec caffeinate -dims uvicorn manager:app --host 0.0.0.0 --port "$MANAGER_PORT"
