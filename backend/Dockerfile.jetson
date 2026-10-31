@@ -1,7 +1,7 @@
 # ==========================================
 # Stage 1: Builder (L4T base + CUDA 12.2 Toolkit)
 # ==========================================
-FROM nvcr.io/nvidia/l4t-base:r35.4.1 AS builder
+FROM nvcr.io/nvidia/l4t-base:r35.2.1 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
