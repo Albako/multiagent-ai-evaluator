@@ -62,7 +62,7 @@ services:
     environment:
       - MANAGER_PORT=8002
       - NODE_ROLE=worker2
-      - OVERRIDE_GPU_LAYERS=24
+      - OVERRIDE_GPU_LAYERS=-1
       - OVERRIDE_N_CTX=4096
       - N_BATCH=256
       - USE_MMAP=false
