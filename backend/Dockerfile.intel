@@ -30,7 +30,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.manager.txt .
 
 # Disable AVX-512 for Intel CPUs and target Ada Lovelace architecture (SM 89)
-ENV CMAKE_ARGS="-DGGML_CUDA=on -DGGML_AVX512=off -DCMAKE_CUDA_ARCHITECTURES=89"
+ENV CFLAGS="-march=alderlake -O3"
+ENV CXXFLAGS="-march=alderlake -O3"
+ENV CMAKE_ARGS="-DGGML_CUDA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON -DCMAKE_CUDA_ARCHITECTURES=89 -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_AVX_VNNI=ON -DGGML_BMI2=ON -DGGML_AVX512=OFF -DCMAKE_BUILD_TYPE=Release"
 ENV FORCE_CMAKE=1
 
 # Link CUDA driver stubs so ggml-cuda VMM compiles without an active GPU during build
