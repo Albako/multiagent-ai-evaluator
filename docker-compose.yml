@@ -65,7 +65,7 @@ services:
       - OVERRIDE_GPU_LAYERS=-1
       - OVERRIDE_N_CTX=4096
       - N_BATCH=256
-      - USE_MMAP=false
+      - USE_MMAP=true
       - FLASH_ATTN=true
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
