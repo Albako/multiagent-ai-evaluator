@@ -53,7 +53,7 @@ PC2:
 docker exec -it model_manager_pc2 python3 -c "
 from llama_cpp import Llama
 print('--- Testing ---')
-llm = Llama(model_path='/models/gemma-4-E4B-it-Q6_K.gguf', n_gpu_layers=24, n_ctx=1024, use_mmap=False, verbose=True)
+llm = Llama(model_path='/models/gemma-4-E4B-it-Q6_K.gguf', n_gpu_layers=-1, n_ctx=1024, use_mmap=False, verbose=True)
 print('--- Success ---')
 "
 ```
