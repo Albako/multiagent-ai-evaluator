@@ -63,7 +63,7 @@ services:
       - MANAGER_PORT=8002
       - NODE_ROLE=worker2
       - OVERRIDE_GPU_LAYERS=-1
-      - OVERRIDE_N_CTX=4096
+      - OVERRIDE_N_CTX=2048
       - N_BATCH=256
       - USE_MMAP=true
       - FLASH_ATTN=true
