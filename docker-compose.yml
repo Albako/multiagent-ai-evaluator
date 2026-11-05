@@ -42,6 +42,7 @@ services:
     environment:
       - MANAGER_PORT=8001
       - NODE_ROLE=worker1
+      - OVERRIDE_GPU_LAYERS=40
       - LLAMA_THREADS=8
       - LLAMA_THREADS_BATCH=8
     restart: unless-stopped
@@ -103,6 +104,7 @@ services:
     environment:
       - MANAGER_PORT=8004
       - NODE_ROLE=judge
+      - OVERRIDE_GPU_LAYERS=30
       - LLAMA_THREADS=8
       - LLAMA_THREADS_BATCH=8
     restart: unless-stopped
