@@ -7,7 +7,7 @@ x-gpu-defaults: &gpu-defaults
             count: 1
             capabilities: [gpu]
 
-x-jeston-gpu-defaults: &jetson-gpu-defaults
+x-jetson-gpu-defaults: &jetson-gpu-defaults
   runtime: nvidia
   environment:
     - NVIDIA_VISIBLE_DEVICES=all
@@ -43,8 +43,12 @@ services:
       - MANAGER_PORT=8001
       - NODE_ROLE=worker1
       - OVERRIDE_GPU_LAYERS=40
+      - OVERRIDE_N_CTX=8192
+      - N_BATCH=512
       - LLAMA_THREADS=8
       - LLAMA_THREADS_BATCH=8
+      - USE_MMAP=true
+      - FLASH_ATTN=true
     restart: unless-stopped
     profiles: ["pc1"]
 
@@ -64,8 +68,8 @@ services:
       - MANAGER_PORT=8002
       - NODE_ROLE=worker2
       - OVERRIDE_GPU_LAYERS=-1
-      - OVERRIDE_N_CTX=4096
-      - N_BATCH=256
+      - OVERRIDE_N_CTX=8192
+      - N_BATCH=512
       - USE_MMAP=false
       - FLASH_ATTN=true
       - NVIDIA_VISIBLE_DEVICES=all
@@ -80,11 +84,18 @@ services:
     container_name: model_manager_pc3
     ports:
       - "8003:8003"
+    volumes:
+      - ./models:/models:z
     env_file:
       - .env
     environment:
       - MANAGER_PORT=8003
       - NODE_ROLE=worker3
+      - OVERRIDE_GPU_LAYERS=-1
+      - OVERRIDE_N_CTX=8192
+      - N_BATCH=512
+      - LLAMA_THREADS=8
+      - LLAMA_THREADS_BATCH=8
     restart: unless-stopped
     profiles: ["pc3"]
 
@@ -105,7 +116,11 @@ services:
       - MANAGER_PORT=8004
       - NODE_ROLE=judge
       - OVERRIDE_GPU_LAYERS=30
+      - OVERRIDE_N_CTX=8192
+      - N_BATCH=512
       - LLAMA_THREADS=8
       - LLAMA_THREADS_BATCH=8
+      - USE_MMAP=true
+      - FLASH_ATTN=true
     restart: unless-stopped
     profiles: ["pc4"]
