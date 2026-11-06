@@ -97,7 +97,7 @@ Verify if a `<llm-model>.gguf` file loads properly into RAM/VRAM on individual n
 ## Initializing Models (`/system/init_mode`)
 You can initialize any mode (`fast`, `pro`, `coding`) either with its default family defined in `.env` (`FAST_MODEL_FAMILY`, `PRO_MODEL_FAMILY`, `CODING_MODEL_FAMILY`) or by explicitly passing `"model_family"` (`"gemma"`, `"qwen"`, `"mixed"`).
 If a node already has the target model loaded in VRAM with matching parameters, the manager skips reloading automatically.
-1. *Initialize using default family from `.env`*
+### 1. *Initialize using default family from `.env`*
   * Coding:
    ```bash
    curl -s -X POST "[http://127.0.0.1:8000/system/init_mode](http://127.0.0.1:8000/system/init_mode)" \
@@ -116,7 +116,7 @@ If a node already has the target model loaded in VRAM with matching parameters, 
              }' \
          -w "\n"
     ```
-3. *Initialize specific model families (`gemma`, `qwen`, `mixed`)*
+### 2. *Initialize specific model families (`gemma`, `qwen`, `mixed`)*
    * Gemma with `coding`:
      ```bash
      curl -s -X POST "[http://127.0.0.1:8000/system/init_mode](http://127.0.0.1:8000/system/init_mode)" \
@@ -210,7 +210,7 @@ If a node already has the target model loaded in VRAM with matching parameters, 
 
 ## Running Inference (/chat)
 Once the desired mode and model family are loaded, send requests to the `/chat` endpoint.
-1. *Fast Mode (Solo PC4)*
+### 1. *Fast Mode (Solo PC4)*
    ```bash
    curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
         -H "Content-Type: application/json" \
@@ -221,7 +221,7 @@ Once the desired mode and model family are loaded, send requests to the `/chat` 
             }' \
         -w "\n"
    ```
-2. *Coding Mode - Parallel Pipeline (`worker1 || worker2 || worker3 -> Judge`)*
+### 2. *Coding Mode - Parallel Pipeline (`worker1 || worker2 || worker3 -> Judge`)*
    All 3 workers execute concurrently, followed by the Judge synthesis and security evaluation:
    ```bash
    curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
@@ -235,7 +235,7 @@ Once the desired mode and model family are loaded, send requests to the `/chat` 
             }' \
         -w "\n"
    ```
-3. *Coding Mode - Sequential Pipeline (`worker1 -> worker2 || worker3 audit -> Judge`)*
+### 3. *Coding Mode - Sequential Pipeline (`worker1 -> worker2 || worker3 audit -> Judge`)*
    Worker 1 generates the initial SecOps code first, then Worker 2 and Worker 3 audit Worker 1's actual output concurrently before passing it to the Judge:
    ```bash
    curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
@@ -249,7 +249,7 @@ Once the desired mode and model family are loaded, send requests to the `/chat` 
             }' \
         -w "\n"
    ```
-4. *Pro Mode (Factual Verification & Anti-Hallucination)*
+### 4. *Pro Mode (Factual Verification & Anti-Hallucination)*
    ```bash
    curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
         -H "Content-Type: application/json" \
@@ -262,7 +262,7 @@ Once the desired mode and model family are loaded, send requests to the `/chat` 
             }' \
         -w "\n"
    ```
-5. *Testing failure injection and self-correction loop*
+### 5. *Testing failure injection and self-correction loop*
    Force the failure injection (`"force_failure_injection": true`) to poison Worker 1's output with a CWE vulnerability / Indirect Prompt Injection and test wheter the Council and Judge reject and remediate it:
    ```bash
    curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
@@ -318,7 +318,7 @@ This directory (along with `backend/benchmark_runner.py`) contains the tooling r
 
 ---
 
-1. `scripts/prepare_benchmark.py`
+### 1. `scripts/prepare_benchmark.py`
 Generates the two standardized JSON benchmark datasets used for evaluation:
 * `official_30_coding_tasks.json` — 30 Python programming and security tasks (equipped with unit tests, CWE vulnerability targets, and deterministic 15% adversarial failure injection payloads).
 * `official_50_text_tasks.json` — 50 domain-knowledge and factual verification tasks (equipped with reference answers and deterministic 15% hallucination/prompt-injection payloads).
@@ -326,17 +326,17 @@ Generates the two standardized JSON benchmark datasets used for evaluation:
 ```bash
 python scripts/prepare_benchmark.py
 ```
-2. `scripts/validate_coding_benchmark.py`
+### 2. `scripts/validate_coding_benchmark.py`
 Verifies the integrity of `official_30_coding_tasks.json` before running cluster-wide benchmarks. It checks JSON schema completeness, confirms that deterministic 15% failure injection flags are properly distributed, and validates the syntax of embedded Python unit tests.
 ```bash
 python scripts/validate_coding_benchmark.py
 ```
-3. `scripts/test_generate.py`
+### 3. `scripts/test_generate.py`
 A lightweight diagnostic script used to verify connectivity, model loading, and token generation speed on individual nodes (PC1–PC4) or through the central API Gateway (PC0) before starting a full benchmark run.
 ```bash
 python scripts/test_generate.py
 ```
-4. `backend/benchmark_runner.py`
+### 4. `backend/benchmark_runner.py`
 Executes the automated evaluation suites against the API Gateway (`http://localhost:8000`). For each task, it records:
   * End-to-end latency and pernode execution traces (`execution_trace`),
   * Prompt and completion costs,
@@ -393,7 +393,7 @@ Executes the automated evaluation suites against the API Gateway (`http://localh
     --families mixed \
     --coding-output results_30_coding_mixed.json
   ```
-5. `scripts/analyze_results.py`
+### 5. `scripts/analyze_results.py`
 Parses the generated output files (`results_30_coding.json` and `results_50_text.json`) and computes aggregated metrics across configurations (`Fast`, `Parallel`, `Sequential`) and model families:
 * **Coding Metrics:** Unit test pass rate (%), static CWE vulnerability rate, Judge security & performance rubric averages, and sandbox execution time.
 * **Pro/Text Metrics:** Factual consistency scores, detected flaws count, and hallucination rejection rates.
