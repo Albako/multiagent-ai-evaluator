@@ -15,7 +15,7 @@ My project is hosted on 5 different devices:
 
 ---
 
-## Architecture: Nodes, Roles & Model Families
+## Architecture: Nodes, Roles and Model Families
 
 The system separates **execution modes** (`fast`, `pro`, `coding`) from **model families** (`gemma`, `qwen`, `mixed`), allowing any model family to be benchmarked in any mode.
 
@@ -97,7 +97,7 @@ Verify if a `<llm-model>.gguf` file loads properly into RAM/VRAM on individual n
 ## Initializing Models (`/system/init_mode`)
 You can initialize any mode (`fast`, `pro`, `coding`) either with its default family defined in `.env` (`FAST_MODEL_FAMILY`, `PRO_MODEL_FAMILY`, `CODING_MODEL_FAMILY`) or by explicitly passing `"model_family"` (`"gemma"`, `"qwen"`, `"mixed"`).
 If a node already has the target model loaded in VRAM with matching parameters, the manager skips reloading automatically.
-1. Initialize using default family from `.env`
+1. *Initialize using default family from `.env`*
   * Coding:
    ```bash
    curl -s -X POST "[http://127.0.0.1:8000/system/init_mode](http://127.0.0.1:8000/system/init_mode)" \
@@ -116,7 +116,7 @@ If a node already has the target model loaded in VRAM with matching parameters, 
              }' \
          -w "\n"
     ```
-3. Initialize specific model families (`gemma`, `qwen`, `mixed`)
+3. *Initialize specific model families (`gemma`, `qwen`, `mixed`)*
    * Gemma with `coding`:
      ```bash
      curl -s -X POST "[http://127.0.0.1:8000/system/init_mode](http://127.0.0.1:8000/system/init_mode)" \
@@ -209,3 +209,106 @@ If a node already has the target model loaded in VRAM with matching parameters, 
      ```
 
 ## Running Inference (/chat)
+Once the desired mode and model family are loaded, send requests to the `/chat` endpoint.
+1. *Fast Mode (Solo PC4)*
+   ```bash
+   curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
+        -H "Content-Type: application/json" \
+        -d '{
+              "message": "Explain the difference between symmetric and asymmetric encryption.",
+              "mode": "fast",
+              "clear_session_after": true
+            }' \
+        -w "\n"
+   ```
+2. *Coding Mode - Parallel Pipeline (`worker1 || worker2 || worker3 -> Judge`)*
+   All 3 workers execute concurrently, followed by the Judge synthesis and security evaluation:
+   ```bash
+   curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
+        -H "Content-Type: application/json" \
+        -d '{
+              "message": "Write a Python function to check if a number is prime and optimize its time complexity.",
+              "mode": "coding",
+              "pipeline_type": "parallel",
+              "max_retries": 1,
+              "clear_session_after": true
+            }' \
+        -w "\n"
+   ```
+3. *Coding Mode - Sequential Pipeline (`worker1 -> worker2 || worker3 audit -> Judge`)*
+   Worker 1 generates the initial SecOps code first, then Worker 2 and Worker 3 audit Worker 1's actual output concurrently before passing it to the Judge:
+   ```bash
+   curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
+        -H "Content-Type: application/json" \
+        -d '{
+              "message": "Write a secure Python function that queries an SQLite database for a user profile by username.",
+              "mode": "coding",
+              "pipeline_type": "sequential",
+              "max_retries": 1,
+              "clear_session_after": true
+            }' \
+        -w "\n"
+   ```
+4. *Pro Mode (Factual Verification & Anti-Hallucination)*
+   ```bash
+   curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
+        -H "Content-Type: application/json" \
+        -d '{
+              "message": "Describe secure practices for deploying containerized services on Linux with rootless privileges.",
+              "mode": "pro",
+              "pipeline_type": "sequential",
+              "max_retries": 1,
+              "clear_session_after": true
+            }' \
+        -w "\n"
+   ```
+5. *Testing failure injection and self-correction loop*
+   Force the failure injection (`"force_failure_injection": true`) to poison Worker 1's output with a CWE vulnerability / Indirect Prompt Injection and test wheter the Council and Judge reject and remediate it:
+   ```bash
+   curl -X POST "[http://127.0.0.1:8000/chat](http://127.0.0.1:8000/chat)" \
+        -H "Content-Type: application/json" \
+        -d '{
+              "message": "Write a Python function to authenticate a user from a database.",
+              "mode": "coding",
+              "pipeline_type": "sequential",
+              "max_retries": 1,
+              "force_failure_injection": true,
+              "clear_session_after": true
+            }' \
+        -w "\n"
+   ```
+## Node Health and Memory Management
+Check active models, KC-cashe quantization, GPU layers overrides, and peak RSS memory on any node (8001 - 8004):
+  * **PC1:**
+    ```bash
+    curl -s "[http://127.0.0.1:8001/api/v1/system/status](http://127.0.0.1:8001/api/v1/system/status)" | python3 -m json.tool
+    ```
+  * **PC2:**
+    ```bash
+    curl -s "[http://127.0.0.1:8002/api/v1/system/status](http://127.0.0.1:8002/api/v1/system/status)" | python3 -m json.tool
+    ```
+  * **PC3:**
+    ```bash
+    curl -s "[http://127.0.0.1:8003/api/v1/system/status](http://127.0.0.1:8003/api/v1/system/status)" | python3 -m json.tool
+    ```
+  * **PC4:**
+    ```bash
+    curl -s "[http://127.0.0.1:8004/api/v1/system/status](http://127.0.0.1:8004/api/v1/system/status)" | python3 -m json.tool
+    ```
+Unload models from VRAM/RAM on a specific node:
+  * **PC1:**
+    ```bash
+    curl -s -X POST "[http://127.0.0.1:8001/api/v1/system/clear_all](http://127.0.0.1:8001/api/v1/system/clear_all)" -w "\n"
+    ```
+  * **PC2:**
+    ```bash
+    curl -s -X POST "[http://127.0.0.1:8002/api/v1/system/clear_all](http://127.0.0.1:8002/api/v1/system/clear_all)" -w "\n"
+    ```
+  * **PC3:**
+    ```bash
+    curl -s -X POST "[http://127.0.0.1:8003/api/v1/system/clear_all](http://127.0.0.1:8003/api/v1/system/clear_all)" -w "\n"
+    ```
+  * **PC4:**
+    ```bash
+    curl -s -X POST "[http://127.0.0.1:8004/api/v1/system/clear_all](http://127.0.0.1:8004/api/v1/system/clear_all)" -w "\n"
+    ```
