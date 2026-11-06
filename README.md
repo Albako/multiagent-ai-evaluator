@@ -5,11 +5,11 @@ My project is hosted on 5 different devices:
 
 | Node | CPU | RAM | GPU | VRAM |
 |:---:|:---:|:---:|:---:|:---:|
-| **PC0**<br>Serves as an API<br>OS: Debian 13<br>Kernel: 7.0 | Intel Core i5-13500TE | 32GB ~35GB/s | No dedicated GPU | - |
-| **PC1**<br>MSI Alpha 17 C7VF<br>OS: Fedora 44<br>Kernel: 7.2 | AMD Ryzen 9 7945HX<br>5.4 GHz<br>8 out of 16 cores | 64GB ~38GB/s | Nvidia RTX 4060 Mobile<br>3072 CUDA cores<br>96 Tensor cores | 8GB ~230GB/s |
-| **PC2**<br>Nvidia Jetson AGX Xavier<br>Developer Kit<br>OS: Ubuntu 20 L4T<br>Kernel: 5.10-tegra | ARMv8.2 Carmel<br>2.27GHz<br>8 cores<br>MAXN mode enabled | 16GB ~65.5GB/s | iGPU<br>512 CUDA cores<br>64 Tensor cores | Unified memory<br>~114GB/s |
-| **PC3**<br>MacBook Pro 16<br>OS: macOS 27.2 | Apple Silicon M1 Pro<br>3.2 GHz<br>8 P-cores | 16GB ~139GB/s | iGPU<br>2048 ALU | Unified memory<br>~182GB/s |
-| **PC4**<br>Workstation<br>OS: Fedora 44<br>Kernel: 7.2 | Intel Core i7-14700KF<br>5.6GHz<br>8 P-cores | 64GB ~87.9GB/s | Nvidia RTX 4070 Ti<br>7680 CUDA cores<br>240 Tensor cores | 12GB ~440GB/s |
+| **PC0**<br>Serves as an API<br>OS: Debian 13<br>Kernel: 7.0 | Intel Core i5-13500TE | 32GB<br>~35GB/s | No dedicated GPU | - |
+| **PC1**<br>MSI Alpha 17 C7VF<br>OS: Fedora 44<br>Kernel: 7.2 | AMD Ryzen 9 7945HX<br>5.4 GHz<br>8 out of 16 cores | 64GB<br> ~38GB/s | Nvidia RTX 4060 Mobile<br>3072 CUDA cores<br>96 Tensor cores | 8GB<br>~230GB/s |
+| **PC2**<br>Nvidia Jetson AGX Xavier<br>Developer Kit<br>OS: Ubuntu 20 L4T<br>Kernel: 5.10-tegra | ARMv8.2 Carmel<br>2.27GHz<br>8 cores<br>MAXN mode enabled | 16GB<br>~65.5GB/s | iGPU<br>512 CUDA cores<br>64 Tensor cores | Unified memory<br>~114GB/s |
+| **PC3**<br>MacBook Pro 16<br>OS: macOS 27.2 | Apple Silicon M1 Pro<br>3.2 GHz<br>8 P-cores | 16GB<br>~139GB/s | iGPU<br>2048 ALU | Unified memory<br>~182GB/s |
+| **PC4**<br>Workstation<br>OS: Fedora 44<br>Kernel: 7.2 | Intel Core i7-14700KF<br>5.6GHz<br>8 P-cores | 64GB<br>~87.9GB/s | Nvidia RTX 4070 Ti<br>7680 CUDA cores<br>240 Tensor cores | 12GB<br>~440GB/s |
 
 `PC1`, `PC3`, and `PC4` are pinned to 8 physical CPU cores (`P-cores` on Intel/Apple Silicon, single CCD on Ryzen) for optimal cache locality and memory bandwidth. Hardware parameters (`OVERRIDE_GPU_LAYERS`, `OVERRIDE_N_CTX`, `N_BATCH`) are managed per node in `docker-compose.yml` (and `start_mac.sh` on `PC3`).
 
