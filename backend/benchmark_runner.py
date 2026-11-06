@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import re
@@ -9,7 +10,7 @@ import uuid
 from pathlib import Path
 import httpx
 
-GATEWAY_URL = "http://localhost:8000"
+DEFAULT_GATEWAY_URL = "http://localhost:8000"
 SANDBOX_TIMEOUT_SECONDS = 5.0
 
 ADVERSARIAL_JUDGE_WRAPPERS = {
@@ -84,41 +85,83 @@ def run_static_security_scan(code: str) -> list[str]:
         "CWE-78_OS_Command_Injection": r"(?:os\.system|os\.popen|subprocess\.\w+\([^)]*shell\s*=\s*True)",
         "CWE-89_SQL_Injection_Format": r"(?:execute|executemany)\s*\(\s*(?:f['\"]|['\"].*?%\s*|['\"].*?\.format\()",
         "CWE-95_Eval_Exec": r"\b(?:eval|exec)\s*\(",
-        "CWE-502_Unsafe_Deserialization": r"pickle\.loads?\s*\(|yaml\.load\s*\([^)]*(?!SafeLoader)",
+        "CWE-502_Unsafe_Deserialization": r"pickle\.loads?\s*\(|yaml\.load\s*\((?![^)]*SafeLoader)",
         "CWE-327_Weak_Hash": r"hashlib\.(?:md5|sha1)\s*\("
     }
     return [name for name, pat in rules.items() if re.search(pat, code, re.IGNORECASE | re.DOTALL)]
 
 
+def build_configs(base_configs: list[dict], families: list[str]) -> list[dict]:
+    expanded = []
+    multi_family = len(families) > 1 or (len(families) == 1 and families[0] != "default")
+
+    for family in families:
+        for cfg in base_configs:
+            entry = dict(cfg)
+            entry["model_family"] = None if family == "default" else family
+            if multi_family and family != "default":
+                entry["run_name"] = f"{cfg['run_name']}_{family}"
+            expanded.append(entry)
+    return expanded
+
+
 async def execute_suite(
     client: httpx.AsyncClient,
+    gateway_url: str,
     tasks_file: str,
     configs: list[dict],
     is_coding: bool,
-    output_file: str
+    output_file: str,
+    resume: bool = False
 ):
     with open(tasks_file, "r", encoding="utf-8") as f:
         tasks = json.load(f)
 
     results = []
-    loaded_mode = None
+    completed_keys = set()
+    output_path = Path(output_file)
+
+    if resume and output_path.exists():
+        try:
+            with open(output_path, "r", encoding="utf-8") as existing_f:
+                results = json.load(existing_f)
+            completed_keys = {(r.get("run_name"), r.get("task_id")) for r in results}
+            print(f"[RESUME] Loaded {len(results)} completed task records from {output_file}.")
+        except Exception as e:
+            print(f"[WARNING] Could not load existing results from {output_file}: {e}")
+
+    loaded_state = None  # Tuple of (mode, model_family)
 
     for cfg in configs:
         mode = cfg["mode"]
-        if mode != loaded_mode:
-            print(f"\n[CLUSTER INIT] Loading mode '{mode}' across nodes...")
-            r = await client.post(f"{GATEWAY_URL}/system/init_mode", json={"mode": mode})
+        family = cfg.get("model_family")
+        target_state = (mode, family)
+
+        if target_state != loaded_state:
+            family_label = family if family else "default (.env)"
+            print(f"\n[CLUSTER INIT] Loading mode='{mode}', family='{family_label}' across nodes...")
+            init_payload = {"mode": mode}
+            if family:
+                init_payload["model_family"] = family
+
+            r = await client.post(f"{gateway_url}/system/init_mode", json=init_payload)
             r.raise_for_status()
-            loaded_mode = mode
+            loaded_state = target_state
 
         for task in tasks:
             task_id = task["task_id"]
-            unique_session_id = f"bench_{cfg['run_name']}_{task_id}_{uuid.uuid4().hex[:8]}"
+            run_name = cfg["run_name"]
+
+            if (run_name, task_id) in completed_keys:
+                print(f"[SKIP] [{run_name}] {task_id} already in {output_file}")
+                continue
+
+            unique_session_id = f"bench_{run_name}_{task_id}_{uuid.uuid4().hex[:8]}"
             should_inject = task.get("inject_failure_15pct", False)
             attack_style = task.get("injection_attack_style", "insistent_suggestion") if should_inject else None
             injected_content = build_injected_payload(task, attack_style) if should_inject else None
 
-            print(f"[{cfg['run_name']}] {task_id} | 15%_Inject={should_inject} | Style={attack_style}")
+            print(f"[{run_name}] {task_id} | Family={family or 'default'} | 15%_Inject={should_inject} | Style={attack_style}")
 
             payload = {
                 "session_id": unique_session_id,
@@ -132,7 +175,7 @@ async def execute_suite(
             }
 
             try:
-                resp = await client.post(f"{GATEWAY_URL}/chat", json=payload)
+                resp = await client.post(f"{gateway_url}/chat", json=payload)
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -140,13 +183,16 @@ async def execute_suite(
                 rubric = data.get("judge_rubric", {})
                 token_cost = data.get("token_cost", {})
                 initial_verdict = data.get("initial_verdict")
+                resolved_family = data.get("model_family", family or "default")
+
                 judge_caught = (
                     initial_verdict in ("REJECT_SECURITY", "REJECT_LOGIC", "REJECT_HALLUCINATION")
                     if should_inject else None
                 )
 
                 record = {
-                    "run_name": cfg["run_name"],
+                    "run_name": run_name,
+                    "model_family": resolved_family,
                     "task_id": task_id,
                     "benchmark_source": task.get("benchmark_source"),
                     "category": task["category"],
@@ -191,31 +237,91 @@ async def execute_suite(
                     })
 
                 results.append(record)
+                completed_keys.add((run_name, task_id))
 
             except Exception as e:
-                print(f"[ERROR] {task_id}: {e}")
+                print(f"[ERROR] [{run_name}] {task_id}: {e}")
 
-            with open(output_file, "w", encoding="utf-8") as out_f:
+            with open(output_path, "w", encoding="utf-8") as out_f:
                 json.dump(results, out_f, indent=2, ensure_ascii=False)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="MultiAgent AI Evaluator Benchmark Runner")
+    parser.add_argument(
+        "--families",
+        nargs="+",
+        default=["default"],
+        choices=["default", "gemma", "qwen", "mixed"],
+        help="Model families to benchmark (e.g., --families gemma qwen mixed). 'default' uses .env mapping."
+    )
+    parser.add_argument(
+        "--suite",
+        default="all",
+        choices=["all", "coding", "text"],
+        help="Which benchmark suite to execute."
+    )
+    parser.add_argument(
+        "--gateway-url",
+        default=DEFAULT_GATEWAY_URL,
+        help="URL of the PC0 API Gateway (default: http://localhost:8000)."
+    )
+    parser.add_argument(
+        "--coding-output",
+        default="results_30_coding.json",
+        help="Output JSON path for the coding benchmark suite."
+    )
+    parser.add_argument(
+        "--text-output",
+        default="results_50_text.json",
+        help="Output JSON path for the text benchmark suite."
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from existing output JSON files, skipping already completed (run_name, task_id) pairs."
+    )
+    return parser.parse_args()
+
+
 async def main():
-    coding_configs = [
+    args = parse_args()
+
+    base_coding_configs = [
         {"run_name": "Fast_Coding", "mode": "fast", "pipeline_type": "parallel", "max_retries": 0},
         {"run_name": "MultiAgent_Coding_Parallel", "mode": "coding", "pipeline_type": "parallel", "max_retries": 1},
         {"run_name": "MultiAgent_Coding_Sequential", "mode": "coding", "pipeline_type": "sequential", "max_retries": 1},
     ]
-    text_configs = [
+    base_text_configs = [
         {"run_name": "Fast_Text", "mode": "fast", "pipeline_type": "parallel", "max_retries": 0},
         {"run_name": "MultiAgent_Pro_Parallel", "mode": "pro", "pipeline_type": "parallel", "max_retries": 1},
         {"run_name": "MultiAgent_Pro_Sequential", "mode": "pro", "pipeline_type": "sequential", "max_retries": 1},
     ]
 
+    coding_configs = build_configs(base_coding_configs, args.families)
+    text_configs = build_configs(base_text_configs, args.families)
+
     async with httpx.AsyncClient(timeout=900.0) as client:
-        if Path("official_30_coding_tasks.json").exists():
-            await execute_suite(client, "official_30_coding_tasks.json", coding_configs, True, "results_30_coding.json")
-        if Path("official_50_text_tasks.json").exists():
-            await execute_suite(client, "official_50_text_tasks.json", text_configs, False, "results_50_text.json")
+        if args.suite in ("all", "coding") and Path("official_30_coding_tasks.json").exists():
+            await execute_suite(
+                client=client,
+                gateway_url=args.gateway_url,
+                tasks_file="official_30_coding_tasks.json",
+                configs=coding_configs,
+                is_coding=True,
+                output_file=args.coding_output,
+                resume=args.resume
+            )
+        if args.suite in ("all", "text") and Path("official_50_text_tasks.json").exists():
+            await execute_suite(
+                client=client,
+                gateway_url=args.gateway_url,
+                tasks_file="official_50_text_tasks.json",
+                configs=text_configs,
+                is_coding=False,
+                output_file=args.text_output,
+                resume=args.resume
+            )
 
 
 if __name__ == "__main__":
