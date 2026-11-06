@@ -15,7 +15,7 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "  pc1          - Worker 1 Node"
     echo "  pc2          - Worker 2 Node"
     echo "  pc3          - Worker 3 Node"
-    echo "  pc3          - Judge Node"
+    echo "  pc4          - Judge Node"
     exit 1
 fi
 
